@@ -682,6 +682,191 @@ class BotConfigUnitTest extends BaseConfigTest {
     }
     
     @Nested
+    @DisplayName("Proxy Configuration Tests")
+    class ProxyConfigurationTests {
+        
+        @Test
+        @DisplayName("hasProxy() returns false when host is empty")
+        void hasProxyReturnsFalseWhenHostEmpty() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                proxy {
+                  host = ""
+                  port = 8080
+                }
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertFalse(config.hasProxy());
+        }
+        
+        @Test
+        @DisplayName("hasProxy() returns false when port is 0")
+        void hasProxyReturnsFalseWhenPortIsZero() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                proxy {
+                  host = "127.0.0.1"
+                  port = 0
+                }
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertFalse(config.hasProxy());
+        }
+        
+        @Test
+        @DisplayName("hasProxy() returns true when host and port are configured")
+        void hasProxyReturnsTrueWhenConfigured() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                proxy {
+                  host = "127.0.0.1"
+                  port = 8080
+                }
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertTrue(config.hasProxy());
+            assertEquals("127.0.0.1", config.getProxyHost());
+            assertEquals(8080, config.getProxyPort());
+        }
+        
+        @Test
+        @DisplayName("Proxy component flags default to false")
+        void proxyComponentFlagsDefaultToFalse() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertFalse(config.proxyLavaplayer());
+            assertFalse(config.proxyJda());
+            assertFalse(config.proxyGithub());
+        }
+        
+        @Test
+        @DisplayName("Proxy component flags are loaded correctly")
+        void proxyComponentFlagsLoadedCorrectly() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                proxy {
+                  host = "127.0.0.1"
+                  port = 8080
+                  lavaplayer = true
+                  jda = false
+                  github = true
+                }
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertTrue(config.proxyLavaplayer());
+            assertFalse(config.proxyJda());
+            assertTrue(config.proxyGithub());
+        }
+        
+        @Test
+        @DisplayName("All proxy component flags can be enabled")
+        void allProxyComponentFlagsCanBeEnabled() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                proxy {
+                  host = "proxy.example.com"
+                  port = 18080
+                  lavaplayer = true
+                  jda = true
+                  github = true
+                }
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertTrue(config.hasProxy());
+            assertEquals("proxy.example.com", config.getProxyHost());
+            assertEquals(18080, config.getProxyPort());
+            assertTrue(config.proxyLavaplayer());
+            assertTrue(config.proxyJda());
+            assertTrue(config.proxyGithub());
+        }
+        
+        @Test
+        @DisplayName("Practical use case: only Lavaplayer through proxy")
+        void practicalUseCaseOnlyLavaplayerThroughProxy() throws IOException {
+            String configContent = """
+                meta {
+                  configVersion = 1
+                }
+                discord.token = test_token
+                discord.owner = 123456789
+                proxy {
+                  host = "127.0.0.1"
+                  port = 18080
+                  lavaplayer = true
+                  jda = false
+                  github = false
+                }
+                """;
+            Path configFile = createTempConfigFile(configContent);
+            setConfigFileProperty(configFile);
+            
+            BotConfig config = new BotConfig(mockUserInteraction);
+            config.load();
+            
+            assertTrue(config.hasProxy());
+            assertTrue(config.proxyLavaplayer());
+            assertFalse(config.proxyJda());
+            assertFalse(config.proxyGithub());
+        }
+    }
+    
+    @Nested
     @DisplayName("Status and Game Tests")
     class StatusAndGameTests {
         

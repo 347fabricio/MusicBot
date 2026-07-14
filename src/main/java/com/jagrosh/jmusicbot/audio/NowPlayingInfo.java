@@ -13,8 +13,37 @@ public class NowPlayingInfo {
     public final long position;
     public final long duration;
     public final int volume;
+    public final int queueSize;
+    public final int previousTrackCount;
+    public final boolean isCurrentTrackFavorited;
+    public final String footerInfo;
 
-    public NowPlayingInfo(AudioTrack track, Guild guild, boolean isPaused, int volume) {
+    public NowPlayingInfo(AudioTrack track, Guild guild, boolean isPaused, int volume, int queueSize, String footerInfo) {
+        this(track, guild, isPaused, volume, queueSize, 0, false, footerInfo);
+    }
+
+    public NowPlayingInfo(
+            AudioTrack track,
+            Guild guild,
+            boolean isPaused,
+            int volume,
+            int queueSize,
+            int previousTrackCount,
+            String footerInfo
+    ) {
+        this(track, guild, isPaused, volume, queueSize, previousTrackCount, false, footerInfo);
+    }
+
+    public NowPlayingInfo(
+            AudioTrack track,
+            Guild guild,
+            boolean isPaused,
+            int volume,
+            int queueSize,
+            int previousTrackCount,
+            boolean isCurrentTrackFavorited,
+            String footerInfo
+    ) {
         this.track = track;
         this.guild = guild;
         this.isPaused = isPaused;
@@ -25,5 +54,9 @@ public class NowPlayingInfo {
                 ? 0
                 : track.getDuration();
         this.volume = volume;
+        this.queueSize = queueSize;
+        this.previousTrackCount = Math.max(0, previousTrackCount);
+        this.isCurrentTrackFavorited = isCurrentTrackFavorited;
+        this.footerInfo = footerInfo;
     }
 }

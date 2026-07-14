@@ -149,10 +149,10 @@ class ConfigLoaderTest extends BaseConfigTest {
                 .withToken("test_token")
                 .build();
             
-            // Create defaults that claim version 2 (no migration path exists for 1->2)
-            // Migration will succeed for 0->1, then fail for 1->2
+            // Create defaults that claim version 3 (no migration path exists for 2->3)
+            // Migration will succeed for 0->1 and 1->2, then fail for 2->3
             Config defaults = V1ConfigBuilder.create()
-                .withMetaVersion(2)
+                .withMetaVersion(3)
                 .build();
             
             // Should throw ConfigMigrationException, not swallow it
@@ -172,7 +172,7 @@ class ConfigLoaderTest extends BaseConfigTest {
             // Empty config simulates no config file exists (fresh install)
             Config emptyConfig = com.typesafe.config.ConfigFactory.empty();
             Config defaults = V1ConfigBuilder.create()
-                .withMetaVersion(1)
+                .withMetaVersion(2)
                 .build();
             
             // Should return empty config without triggering migration
@@ -194,7 +194,7 @@ class ConfigLoaderTest extends BaseConfigTest {
             // The merged config should have values from defaults (reference.conf)
             // Verify it has the expected structure from v1 format
             assertTrue(merged.hasPath("meta.configVersion"));
-            assertEquals(1, merged.getInt("meta.configVersion"));
+            assertEquals(2, merged.getInt("meta.configVersion"));
         }
         
         @Test
@@ -203,7 +203,7 @@ class ConfigLoaderTest extends BaseConfigTest {
             // Create an empty config (simulating non-existent file)
             Config emptyConfig = com.typesafe.config.ConfigFactory.empty();
             Config defaults = V1ConfigBuilder.create()
-                .withMetaVersion(1)
+                .withMetaVersion(2)
                 .build();
             
             Config result = ConfigLoader.loadMigratedUserConfig(emptyConfig, defaults);
@@ -224,15 +224,15 @@ class ConfigLoaderTest extends BaseConfigTest {
         @Test
         @DisplayName("loadMigratedUserConfig() returns raw config when user version is higher than latest")
         void loadMigratedUserConfigReturnsRawConfigWhenUserVersionHigher() {
-            // Create a config with version higher than latest (user manually set version 2)
+            // Create a config with version higher than latest (user manually set version 3)
             Config rawUserConfig = V1ConfigBuilder.create()
                 .withDiscordToken("test_token")
-                .withMetaVersion(2)
+                .withMetaVersion(3)
                 .build();
             
-            // Defaults have version 1 (the actual latest)
+            // Defaults have version 2 (the actual latest)
             Config defaults = V1ConfigBuilder.create()
-                .withMetaVersion(1)
+                .withMetaVersion(2)
                 .build();
             
             // Should return raw config without modification (and log a warning)
@@ -240,7 +240,7 @@ class ConfigLoaderTest extends BaseConfigTest {
             
             // Config should be returned unchanged
             assertNotNull(result);
-            assertEquals(2, result.getInt("meta.configVersion"));
+            assertEquals(3, result.getInt("meta.configVersion"));
             assertEquals("test_token", result.getString("discord.token"));
         }
         
@@ -253,7 +253,7 @@ class ConfigLoaderTest extends BaseConfigTest {
                 .build();
             
             Config defaults = V1ConfigBuilder.create()
-                .withMetaVersion(1)
+                .withMetaVersion(2)
                 .build();
             
             // Should not throw - just warn and return the config

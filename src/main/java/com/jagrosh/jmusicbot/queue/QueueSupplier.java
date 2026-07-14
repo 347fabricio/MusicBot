@@ -22,5 +22,13 @@ package com.jagrosh.jmusicbot.queue;
 @FunctionalInterface
 public interface QueueSupplier
 {
-    <T extends Queueable> AbstractQueue<T> apply(AbstractQueue<T> queue);
+    /**
+     * Creates a new queue instance.
+     * 
+     * @param queue The previous queue to copy state from, or null for initial creation
+     * @param maxHistorySize The maximum history size (only used when queue is null)
+     * @param <T> The type of items in the queue
+     * @return A new queue instance
+     */
+    <T extends Queueable> AbstractQueue<T> apply(AbstractQueue<T> queue, int maxHistorySize);
 }

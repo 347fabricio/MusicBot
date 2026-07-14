@@ -16,8 +16,8 @@
 package com.jagrosh.jmusicbot.utils;
 
 import com.jagrosh.jmusicbot.JMusicBot;
-import com.jagrosh.jmusicbot.entities.Prompt;
 import com.jagrosh.jmusicbot.entities.UserInteraction;
+import com.jagrosh.jmusicbot.entities.UserInteraction.Level;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.entities.Activity;
@@ -31,12 +31,16 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 import java.io.*;
+import java.net.Proxy;
+import java.util.concurrent.TimeUnit;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+
+import com.jagrosh.jmusicbot.BotConfig;
 
 /**
  *
@@ -161,7 +165,7 @@ public class OtherUtil
     public static void checkJavaVersion(UserInteraction userInteraction)
     {
         if(!System.getProperty("java.vm.name").contains("64"))
-            userInteraction.alert(Prompt.Level.WARNING, "Java Version", 
+            userInteraction.alert(Level.WARNING, "Java Version", 
                     "It appears that you may not be using a supported Java version. Please use 64-bit java.");
     }
     
@@ -175,7 +179,22 @@ public class OtherUtil
     
     public static String getLatestVersion()
     {
-        return getLatestVersion("https://api.github.com/repos/arif-banai/MusicBot");
+        return getLatestVersion("https://api.github.com/repos/arif-banai/MusicBot", null);
+    }
+    
+    /**
+     * Gets the latest non-prerelease version from GitHub releases API with optional proxy support.
+     * 
+     * @param config the bot configuration (may be null)
+     * @return the latest non-prerelease version tag (without 'v' prefix), or null if not found
+     */
+    public static String getLatestVersion(BotConfig config)
+    {
+        Proxy proxy = null;
+        if (config != null && config.proxyGithub() && config.hasProxy()) {
+            proxy = ProxyUtil.createProxy(config);
+        }
+        return getLatestVersion("https://api.github.com/repos/arif-banai/MusicBot", proxy);
     }
     
     /**
@@ -187,9 +206,31 @@ public class OtherUtil
      */
     public static String getLatestVersion(String baseUrl)
     {
+        return getLatestVersion(baseUrl, null);
+    }
+    
+    /**
+     * Gets the latest non-prerelease version from GitHub releases API with optional proxy support.
+     * This method is public to allow testing with mock servers.
+     * 
+     * @param baseUrl the base URL for the GitHub API (e.g., "https://api.github.com/repos/arif-banai/MusicBot")
+     * @param proxy the proxy to use for HTTP requests (may be null)
+     * @return the latest non-prerelease version tag (without 'v' prefix), or null if not found
+     */
+    public static String getLatestVersion(String baseUrl, Proxy proxy)
+    {
         try
         {
-            OkHttpClient client = new OkHttpClient.Builder().build();
+            OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .writeTimeout(5, TimeUnit.SECONDS);
+            
+            if (proxy != null) {
+                clientBuilder.proxy(proxy);
+            }
+            
+            OkHttpClient client = clientBuilder.build();
             // First, try to get the latest release
             Response response = client.newCall(new Request.Builder().get()
                     .url(baseUrl + "/releases/latest").build())
@@ -267,15 +308,26 @@ public class OtherUtil
 
     public static void checkVersion(UserInteraction userInteraction)
     {
+        checkVersion(userInteraction, null);
+    }
+    
+    /**
+     * Checks for a new version of JMusicBot with optional proxy support.
+     * 
+     * @param userInteraction the user interaction handler for alerts
+     * @param config the bot configuration for proxy settings (may be null)
+     */
+    public static void checkVersion(UserInteraction userInteraction, BotConfig config)
+    {
         // Get current version number
         String version = getCurrentVersion();
 
         // Check for new version
-        String latestVersion = getLatestVersion();
+        String latestVersion = getLatestVersion(config);
 
         if(latestVersion != null && isNewerVersion(version, latestVersion))
         {
-            userInteraction.alert(Prompt.Level.WARNING, "JMusicBot Version", String.format(NEW_VERSION_AVAILABLE, version, latestVersion));
+            userInteraction.alert(Level.WARNING, "JMusicBot Version", String.format(NEW_VERSION_AVAILABLE, version, latestVersion));
         }
     }
 

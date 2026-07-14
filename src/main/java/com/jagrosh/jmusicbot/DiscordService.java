@@ -2,9 +2,19 @@ package com.jagrosh.jmusicbot;
 
 import com.jagrosh.jdautilities.command.CommandClient;
 import com.jagrosh.jdautilities.commons.waiter.EventWaiter;
-import com.jagrosh.jmusicbot.entities.Prompt;
+import com.jagrosh.jmusicbot.audio.VoiceConnectionMonitor;
+import com.jagrosh.jmusicbot.entities.UserInteraction.Level;
 import com.jagrosh.jmusicbot.entities.UserInteraction;
+import com.jagrosh.jmusicbot.listener.HistoryInteractionListener;
+import com.jagrosh.jmusicbot.listener.NowPlayingCleanupListener;
+import com.jagrosh.jmusicbot.listener.PlaylistsInteractionListener;
+import com.jagrosh.jmusicbot.listener.PlaybackControlsListener;
+import com.jagrosh.jmusicbot.listener.QueueInteractionListener;
+import com.jagrosh.jmusicbot.listener.StartupLifecycleListener;
+import com.jagrosh.jmusicbot.listener.SettingsInteractionListener;
+import com.jagrosh.jmusicbot.listener.VoiceStateListener;
 import com.jagrosh.jmusicbot.utils.OtherUtil;
+import com.jagrosh.jmusicbot.utils.ProxyUtil;
 import com.sedmelluq.discord.lavaplayer.jdaudp.NativeAudioSendFactory;
 import club.minnced.discord.jdave.interop.JDaveSessionFactory;
 import net.dv8tion.jda.api.JDA;
@@ -13,16 +23,18 @@ import net.dv8tion.jda.api.OnlineStatus;
 import net.dv8tion.jda.api.audio.AudioModuleConfig;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
+import okhttp3.OkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.Proxy;
 import java.util.Arrays;
 
 public class DiscordService {
     private static final Logger LOG = LoggerFactory.getLogger(DiscordService.class);
 
     public static JDA createJDA(BotConfig config, Bot bot, EventWaiter waiter, CommandClient client, UserInteraction userInteraction) throws Exception {
-        JDA jda = JDABuilder.create(config.getToken(), Arrays.asList(JMusicBot.INTENTS))
+        JDABuilder jdaBuilder = JDABuilder.create(config.getToken(), Arrays.asList(JMusicBot.INTENTS))
                 .enableCache(CacheFlag.MEMBER_OVERRIDES, CacheFlag.VOICE_STATE)
                 .disableCache(
                         CacheFlag.ACTIVITY,
@@ -36,20 +48,37 @@ public class DiscordService {
                 .setStatus(config.getStatus() == OnlineStatus.INVISIBLE || config.getStatus() == OnlineStatus.OFFLINE
                         ? OnlineStatus.INVISIBLE
                         : OnlineStatus.DO_NOT_DISTURB)
-                .addEventListeners(client, waiter, new Listener(bot))
+                .addEventListeners(client, waiter,
+                        new StartupLifecycleListener(bot),
+                        new NowPlayingCleanupListener(bot),
+                        new PlaybackControlsListener(bot),
+                        new QueueInteractionListener(bot),
+                        new HistoryInteractionListener(bot),
+                        new PlaylistsInteractionListener(bot),
+                        new SettingsInteractionListener(bot),
+                        new VoiceStateListener(bot))
                 .setBulkDeleteSplittingEnabled(true)
                 .setAudioModuleConfig(
                         new AudioModuleConfig()
                                 .withDaveSessionFactory(new JDaveSessionFactory())
-                                .withAudioSendFactory(new NativeAudioSendFactory())
+                                // 800ms buffer provides protection against GC pauses up to 800ms
+                                .withAudioSendFactory(new NativeAudioSendFactory(config.getNasBufferMs()))
                 )
-                .setEnableShutdownHook(true)
-                .build();
+                .setEnableShutdownHook(true);
+        
+        // Configure proxy for JDA HTTP requests if enabled
+        if (config.proxyJda() && config.hasProxy()) {
+            Proxy proxy = ProxyUtil.createProxy(config);
+            jdaBuilder.setHttpClientBuilder(new OkHttpClient.Builder().proxy(proxy));
+            LOG.info("JDA configured to use proxy: {}:{}", config.getProxyHost(), config.getProxyPort());
+        }
+        
+        JDA jda = jdaBuilder.build();
 
         // Perform post-startup validation
         String unsupportedReason = OtherUtil.getUnsupportedBotReason(jda);
         if (unsupportedReason != null) {
-            userInteraction.alert(Prompt.Level.ERROR, "JMusicBot", "JMusicBot cannot be run on this Discord bot: " + unsupportedReason);
+            userInteraction.alert(Level.ERROR, "JMusicBot", "JMusicBot cannot be run on this Discord bot: " + unsupportedReason);
             jda.shutdown();
             System.exit(1);
         }
@@ -57,6 +86,9 @@ public class DiscordService {
         if (!"@mention".equals(config.getPrefix())) {
             LOG.info("You currently have a custom prefix set. If it's not working, ensure 'MESSAGE CONTENT INTENT' is enabled.");
         }
+        
+        // Register voice connection monitor for diagnostics
+        VoiceConnectionMonitor.getInstance().register(jda);
 
         return jda;
     }

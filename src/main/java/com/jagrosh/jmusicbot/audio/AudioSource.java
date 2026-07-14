@@ -35,12 +35,12 @@ import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceMan
 import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
 import dev.lavalink.youtube.YoutubeAudioSourceManager;
 import dev.lavalink.youtube.YoutubeSourceOptions;
-import dev.lavalink.youtube.clients.AndroidVr;
+import dev.lavalink.youtube.clients.AndroidVrWithThumbnail;
 import dev.lavalink.youtube.clients.ClientOptions;
-import dev.lavalink.youtube.clients.MWeb;
+import dev.lavalink.youtube.clients.MWebWithThumbnail;
 import dev.lavalink.youtube.clients.Tv;
-import dev.lavalink.youtube.clients.TvHtml5Embedded;
-import dev.lavalink.youtube.clients.Web;
+import dev.lavalink.youtube.clients.TvHtml5SimplyWithThumbnail;
+import dev.lavalink.youtube.clients.WebWithThumbnail;
 import dev.lavalink.youtube.clients.skeleton.Client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,10 +73,7 @@ public enum AudioSource
         "YouTube videos and playlists",
         10,
         (manager, config) -> {
-            YoutubeAudioSourceManager yt = setupYoutubeAudioSourceManager(
-                config.useYouTubeOauth(),
-                config.getMaxYTPlaylistPages()
-            );
+            YoutubeAudioSourceManager yt = setupYoutubeAudioSourceManager(config);
             manager.registerSourceManager(yt);
         }
     ),
@@ -227,19 +224,19 @@ public enum AudioSource
     /**
      * Sets up and configures a YouTube audio source manager.
      * 
-     * @param useOauth whether to use OAuth2 authentication
-     * @param maxYTPlaylistPages maximum number of playlist pages to load
+     * @param config the bot configuration
      * @return the configured YouTube audio source manager
      */
-    private static YoutubeAudioSourceManager setupYoutubeAudioSourceManager(boolean useOauth, int maxYTPlaylistPages)
+    private static YoutubeAudioSourceManager setupYoutubeAudioSourceManager(BotConfig config)
     {
         final Logger logger = LoggerFactory.getLogger(AudioSource.class);
         
-        YoutubeSourceOptions options = buildYoutubeOptions(useOauth);
+        boolean useOauth = config.useYouTubeOauth();
+        YoutubeSourceOptions options = buildYoutubeOptions(config);
         Client[] clients = buildYoutubeClients(useOauth);
 
         YoutubeAudioSourceManager yt = new YoutubeAudioSourceManager(options, clients);
-        yt.setPlaylistPageCount(maxYTPlaylistPages);
+        yt.setPlaylistPageCount(config.getMaxYTPlaylistPages());
 
         if (useOauth)
         {
@@ -251,17 +248,18 @@ public enum AudioSource
     /**
      * Builds YouTube source options.
      */
-    private static YoutubeSourceOptions buildYoutubeOptions(boolean useOauth)
+    private static YoutubeSourceOptions buildYoutubeOptions(BotConfig config)
     {
         YoutubeSourceOptions options = new YoutubeSourceOptions()
                 .setAllowSearch(true)
                 .setAllowDirectVideoIds(true)
                 .setAllowDirectPlaylistIds(true);
         
-        if (useOauth)
+        if (config.useYouTubeOauth())
         {
             options.setRemoteCipher("https://cipher.kikkia.dev/", null, "jmusicbot");
         }
+        
         return options;
     }
     
@@ -270,19 +268,16 @@ public enum AudioSource
      * 
      * <p>When OAuth is enabled, we use a combination of clients:
      * <ul>
-     *   <li><b>Web (metadata-only)</b> - Primary client for loading video metadata (direct URLs,
-     *       search, playlists). Configured with {@code playback = false} so it won't be used
-     *       for streaming. Being non-embedded, it can handle videos that reject embedded context
-     *       with "video unavailable" errors.</li>
-     *   <li><b>TvHtml5Embedded</b> - OAuth-compatible fallback for loading, primary for streaming.
-     *       Uses embedded player context which works for most videos.</li>
+     *   <li><b>AndroidVrWithThumbnail</b> - Metadata loading (non-embedded, non-OAuth)</li>
+     *   <li><b>MWebWithThumbnail</b> - Metadata loading (non-embedded, non-OAuth)</li>
+     *   <li><b>Web</b> - Metadata loading (non-embedded, non-OAuth)</li>
      *   <li><b>Tv</b> - OAuth-compatible streaming-only client. Used as fallback for loading
+     *       audio stream formats during playback.</li>
+     *   <li><b>TvHtml5SimplyWithThumbnail</b> - *Not oAuth compatible* Used as fallback for loading
      *       audio stream formats during playback.</li>
      * </ul>
      * 
-     * <p>The key insight: OAuth is only required for streaming (getting playback URLs), not for
-     * loading metadata. So we can use the non-OAuth Web client for metadata loading (with
-     * playback disabled) and OAuth clients for streaming.
+     * <p>
      */
     private static Client[] buildYoutubeClients(boolean useOauth)
     {
@@ -293,16 +288,21 @@ public enum AudioSource
             ClientOptions metadataOnly = new ClientOptions();
             metadataOnly.setPlayback(false);
             
-            return new Client[] { 
-                new AndroidVr(metadataOnly), // metadata loading (non-embedded, non-OAuth)
-                new MWeb(metadataOnly),      // metadata loading (non-embedded, non-OAuth)
-                new Web(metadataOnly),       // metadata loading (non-embedded, non-OAuth)
-                new TvHtml5Embedded(),       // Fallback: loading + primary streaming (OAuth)
-                new Tv()                     // Fallback: streaming only (OAuth)
+            return new Client[] {
+                new AndroidVrWithThumbnail(metadataOnly), // metadata loading (non-embedded, non-OAuth)
+                new MWebWithThumbnail(metadataOnly),      // metadata loading (non-embedded, non-OAuth)
+                new WebWithThumbnail(metadataOnly),       // metadata loading (non-embedded, non-OAuth)
+                new Tv(),
+                new TvHtml5SimplyWithThumbnail()
             };
         }
         // Clients are required even without OAuth to properly handle YouTube URLs
-        return new Client[] { new AndroidVr(), new MWeb(), new Web() };
+        return new Client[] {
+            new AndroidVrWithThumbnail(),
+            new MWebWithThumbnail(),
+            new WebWithThumbnail(),
+            new TvHtml5SimplyWithThumbnail() 
+        };
     }
     
     /**

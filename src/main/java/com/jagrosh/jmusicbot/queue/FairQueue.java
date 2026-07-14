@@ -25,9 +25,17 @@ import java.util.Set;
  */
 public class FairQueue<T extends Queueable> extends AbstractQueue<T>
 {
-    public FairQueue(AbstractQueue<T> queue)
+    public FairQueue(AbstractQueue<T> queue, int maxHistorySize)
     {
-        super(queue);
+        super(queue, maxHistorySize);
+    }
+
+    /**
+     * Factory method for use with QueueSupplier.
+     */
+    public static <T extends Queueable> FairQueue<T> create(AbstractQueue<T> queue, int maxHistorySize)
+    {
+        return new FairQueue<>(queue, maxHistorySize);
     }
 
     protected final Set<Long> set = new HashSet<>();

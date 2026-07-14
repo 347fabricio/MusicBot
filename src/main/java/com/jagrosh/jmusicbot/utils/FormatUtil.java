@@ -16,6 +16,8 @@
 package com.jagrosh.jmusicbot.utils;
 
 import com.jagrosh.jmusicbot.audio.RequestMetadata.UserInfo;
+import com.sedmelluq.discord.lavaplayer.source.local.LocalAudioTrack;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
@@ -50,17 +52,6 @@ public class FormatUtil {
     {
         return formatUsername(user.getName(), user.getDiscriminator());
     }
-
-    public static String progressBar(double percent)
-    {
-        String str = "";
-        for(int i=0; i<12; i++)
-            if(i == (int)(percent*12))
-                str+="\uD83D\uDD18"; // 🔘
-            else
-                str+="▬";
-        return str;
-    }
     
     public static String volumeIcon(int volume)
     {
@@ -71,6 +62,26 @@ public class FormatUtil {
         if(volume < 70)
             return "\uD83D\uDD09"; // 🔉
         return "\uD83D\uDD0A";     // 🔊
+    }
+
+    /**
+     * Generates a 12-segment progress bar for track playback.
+     * 
+     * @param percent The progress as a value between 0.0 and 1.0. 
+     *                Use negative values (e.g., -1) for "no music" state (all segments empty).
+     * @return A string representing the progress bar with 🔘 at the current position and ▬ for other segments.
+     */
+    public static String progressBar(double percent)
+    {
+        StringBuilder str = new StringBuilder();
+        for(int i = 0; i < 12; i++)
+        {
+            if(i == (int)(percent * 12))
+                str.append("\uD83D\uDD18"); // 🔘
+            else
+                str.append("▬");
+        }
+        return str.toString();
     }
     
     public static String listOfTChannels(List<TextChannel> list, String query)
@@ -109,5 +120,43 @@ public class FormatUtil {
                 .replace("@everyone", "@\u0435veryone") // cyrillic letter e
                 .replace("@here", "@h\u0435re") // cyrillic letter e
                 .trim();
+    }
+
+    public static String getTrackTitle(AudioTrack track) {
+        String title = track.getInfo().title;
+        if (track instanceof LocalAudioTrack && (title == null || title.equals("Unknown title"))) {
+            String identifier = track.getIdentifier();
+            int lastSeparator = Math.max(identifier.lastIndexOf('/'), identifier.lastIndexOf('\\'));
+            return (lastSeparator != -1) ? identifier.substring(lastSeparator + 1) : identifier;
+        }
+
+        // Truncate if the title is too long for Discord displays
+        if (title != null && title.length() > 100) {
+            title = title.substring(0, 97) + "...";
+        }
+
+        return title;
+    }
+
+    /**
+     * Formats a single track line for use in embeds (e.g. playlist details preview), in the same style as
+     * Queue/History: duration plus linked title, without the " - @user" part.
+     *
+     * @param track the loaded track
+     * @return string like {@code `[MM:SS]` [**Title**](url)} or {@code `[MM:SS]` **Title**} for non-http URIs
+     */
+    public static String formatTrackLineForEmbed(AudioTrack track)
+    {
+        if (track == null)
+        {
+            return "`[?:??]` **Could not load**";
+        }
+        String entry = "`[" + TimeUtil.formatTime(track.getDuration()) + "]` ";
+        var trackInfo = track.getInfo();
+        String title = getTrackTitle(track);
+        String safeTitle = filter(title == null ? "" : title);
+        return entry + (trackInfo.uri != null && trackInfo.uri.startsWith("http")
+                ? "[**" + safeTitle + "**](" + trackInfo.uri + ")"
+                : "**" + safeTitle + "**");
     }
 }

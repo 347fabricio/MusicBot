@@ -495,7 +495,7 @@ class ConfigUpdaterIntegrationTest extends BaseConfigTest {
         }
         
         @Test
-        @DisplayName("V1 config with missing keys produces 'repaired' wording in generated file")
+        @DisplayName("V1 config with missing keys produces 'migrated' wording in generated file")
         void v1ConfigWithMissingKeysProducesRepairedWording() throws IOException {
             // Start with a v1 config that has missing keys
             String v1ConfigWithMissingKeys = """
@@ -518,8 +518,8 @@ class ConfigUpdaterIntegrationTest extends BaseConfigTest {
             
             // Determine update type using the same logic as BotConfig
             ConfigUpdateType updateType = determineUpdateType(configFile);
-            assertEquals(ConfigUpdateType.REPAIR, updateType,
-                "V1 config with missing keys should result in REPAIR update type");
+            assertEquals(ConfigUpdateType.MIGRATION, updateType,
+                "V1 config with missing keys should result in MIGRATION update type");
             
             // Generate the updated config file
             Config merged = ConfigLoader.loadMergedConfig(configFile);
@@ -535,15 +535,15 @@ class ConfigUpdaterIntegrationTest extends BaseConfigTest {
             
             // Read the generated file and verify the header comment
             String content = readFileContent(updatedPath);
-            assertTrue(content.contains("# This file was automatically repaired on"),
-                "Generated file should contain 'repaired' wording for V1 config with missing keys. Content starts with: "
+            assertTrue(content.contains("# This file was automatically migrated on"),
+                "Generated file should contain 'migrated' wording for V1 config with missing keys. Content starts with: "
                 + content.substring(0, Math.min(200, content.length())));
-            assertFalse(content.contains("migrated"),
-                "Generated file should NOT contain 'migrated' for V1 config repair");
+            assertFalse(content.contains("repaired"),
+                "Generated file should NOT contain 'repaired' for V1 config migration");
         }
         
         @Test
-        @DisplayName("V1 config with specific missing key produces 'repaired' wording")
+        @DisplayName("V1 config with specific missing key produces 'migrated' wording")
         void v1ConfigMissingSpecificKeyProducesRepairedWording() throws IOException {
             // Start with a v1 config where only playback.audioSources.local is missing
             String v1ConfigMissingOneKey = """
@@ -565,7 +565,7 @@ class ConfigUpdaterIntegrationTest extends BaseConfigTest {
                     getyarn = false
                     nico = false
                     http = false
-                    # local key is intentionally missing - this should trigger REPAIR
+                    # local key is intentionally missing
                   }
                 }
                 """;
@@ -579,8 +579,8 @@ class ConfigUpdaterIntegrationTest extends BaseConfigTest {
             
             // Determine update type
             ConfigUpdateType updateType = determineUpdateType(configFile);
-            assertEquals(ConfigUpdateType.REPAIR, updateType,
-                "V1 config missing playback.audioSources.local should result in REPAIR");
+            assertEquals(ConfigUpdateType.MIGRATION, updateType,
+                "V1 config missing playback.audioSources.local should result in MIGRATION");
             
             // Generate the updated config file
             Config merged = ConfigLoader.loadMergedConfig(configFile);
@@ -596,10 +596,10 @@ class ConfigUpdaterIntegrationTest extends BaseConfigTest {
             
             // Read the generated file and verify the header comment
             String content = readFileContent(updatedPath);
-            assertTrue(content.contains("# This file was automatically repaired on"),
-                "Generated file should contain 'repaired' wording when specific key is missing");
-            assertFalse(content.contains("migrated"),
-                "Generated file should NOT contain 'migrated' for V1 repair");
+            assertTrue(content.contains("# This file was automatically migrated on"),
+                "Generated file should contain 'migrated' wording when specific key is missing");
+            assertFalse(content.contains("repaired"),
+                "Generated file should NOT contain 'repaired' for V1 migration");
         }
         
         @Test

@@ -40,6 +40,12 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("ConfigRenderer Unit Tests")
 class ConfigRendererTest {
     
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        // Invalidate caches to ensure test isolation
+        ConfigFactory.invalidateCaches();
+    }
+    
     @Nested
     @DisplayName("ConfigDocument Usage")
     class ConfigDocumentUsageTests {
@@ -221,7 +227,7 @@ class ConfigRendererTest {
             // The content should be parseable and have correct structure
             Config parsed = ConfigFactory.parseString(content);
             assertTrue(parsed.hasPath("meta.configVersion"));
-            assertEquals(1, parsed.getInt("meta.configVersion"));
+            assertEquals(2, parsed.getInt("meta.configVersion"));
             assertEquals("test_token", parsed.getString("discord.token"));
         }
         
@@ -392,6 +398,142 @@ class ConfigRendererTest {
                 "Template's bandcamp=true should be preserved");
             assertTrue(audioSources.getBoolean("vimeo"), 
                 "Template's vimeo=true should be preserved");
+        }
+    }
+    
+    @Nested
+    @DisplayName("Dynamic Nested Config Preservation (Transforms)")
+    class DynamicNestedConfigPreservationTests {
+        
+        @Test
+        @DisplayName("diagnostics does not flag user-defined transforms as deprecated")
+        void diagnosticsDoesNotFlagTransformsAsDeprecated() {
+            Map<String, Object> spotifyTransform = Map.of(
+                    "regex", "https?://.*spotify.com/track/.*",
+                    "replacement", "https://open.spotify.com/track/$1",
+                    "selector", "title",
+                    "format", "ytsearch:%s"
+            );
+            
+            Map<String, Object> transforms = new HashMap<>();
+            transforms.put("spotify", spotifyTransform);
+            
+            Config migratedUserConfig = V1ConfigBuilder.create()
+                .withMetaVersion(1)
+                .withDiscordToken("test_token")
+                .withDiscordOwner(123456789L)
+                .withPlaybackTransforms(transforms)
+                .build();
+            
+            // Run diagnostics as BotConfig would
+            Config defaults = ConfigFactory.load("reference.conf");
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            ConfigDiagnostics.Report diagnostics = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            // Verify no deprecated warnings for transforms
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify"),
+                    "spotify transform should not be flagged as deprecated");
+            for (String deprecated : diagnostics.getDeprecated()) {
+                assertFalse(deprecated.startsWith("playback.transforms."),
+                        "No paths under playback.transforms should be deprecated, but found: " + deprecated);
+            }
+        }
+        
+        @Test
+        @DisplayName("diagnostics does not flag nested transform keys as deprecated")
+        void diagnosticsDoesNotFlagNestedTransformKeysAsDeprecated() {
+            // Test that inner keys like regex, replacement, selector, format are not flagged
+            Map<String, Object> spotifyTransform = Map.of(
+                    "regex", "pattern",
+                    "replacement", "replacement",
+                    "selector", "title",
+                    "format", "format"
+            );
+            
+            Map<String, Object> transforms = new HashMap<>();
+            transforms.put("spotify", spotifyTransform);
+            
+            Config migratedUserConfig = V1ConfigBuilder.create()
+                .withMetaVersion(1)
+                .withDiscordToken("test_token")
+                .withDiscordOwner(123456789L)
+                .withPlaybackTransforms(transforms)
+                .build();
+            
+            Config defaults = ConfigFactory.load("reference.conf");
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            ConfigDiagnostics.Report diagnostics = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            // Verify none of the nested keys are flagged
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify.regex"));
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify.replacement"));
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify.selector"));
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify.format"));
+        }
+        
+        @Test
+        @DisplayName("diagnostics does not flag multiple transforms as deprecated")
+        void diagnosticsDoesNotFlagMultipleTransformsAsDeprecated() {
+            Map<String, Object> spotifyTransform = Map.of("regex", "pattern1", "replacement", "rep1", "selector", "title", "format", "fmt1");
+            Map<String, Object> youtubeTransform = Map.of("regex", "pattern2", "replacement", "rep2", "selector", "title", "format", "fmt2");
+            
+            Map<String, Object> transforms = new HashMap<>();
+            transforms.put("spotify", spotifyTransform);
+            transforms.put("youtube", youtubeTransform);
+            
+            Config migratedUserConfig = V1ConfigBuilder.create()
+                .withMetaVersion(1)
+                .withDiscordToken("test_token")
+                .withDiscordOwner(123456789L)
+                .withPlaybackTransforms(transforms)
+                .build();
+            
+            Config defaults = ConfigFactory.load("reference.conf");
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            ConfigDiagnostics.Report diagnostics = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            // Verify neither transform is flagged as deprecated
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify"));
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.youtube"));
+        }
+        
+        @Test
+        @DisplayName("generateConfigContent does not show deprecated warning for user-defined transforms")
+        void generateConfigContentNoDeprecatedWarningForTransforms() {
+            Map<String, Object> spotifyTransform = Map.of(
+                    "regex", "https?://.*spotify.com/track/.*",
+                    "replacement", "https://open.spotify.com/track/$1",
+                    "selector", "title",
+                    "format", "ytsearch:%s"
+            );
+            
+            Map<String, Object> transforms = new HashMap<>();
+            transforms.put("spotify", spotifyTransform);
+            
+            Config migratedUserConfig = V1ConfigBuilder.create()
+                .withMetaVersion(1)
+                .withDiscordToken("test_token")
+                .withDiscordOwner(123456789L)
+                .withPlaybackTransforms(transforms)
+                .build();
+            
+            // Run diagnostics as BotConfig would
+            Config defaults = ConfigFactory.load("reference.conf");
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            ConfigDiagnostics.Report diagnostics = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            // Verify no deprecated warnings for transforms
+            assertFalse(diagnostics.getDeprecated().contains("playback.transforms.spotify"),
+                    "spotify transform should not be flagged as deprecated");
+            for (String deprecated : diagnostics.getDeprecated()) {
+                assertFalse(deprecated.startsWith("playback.transforms."),
+                        "No paths under playback.transforms should be deprecated, but found: " + deprecated);
+            }
+            
+            // Generate content and verify no "Deprecated keys removed" mentioning transforms
+            String content = ConfigRenderer.generateConfigContent(migratedUserConfig, diagnostics, ConfigUpdateType.MIGRATION);
+            assertFalse(content.contains("playback.transforms.spotify") && content.contains("Deprecated keys removed"),
+                    "Generated content should not mention transforms in deprecated keys section");
         }
     }
     

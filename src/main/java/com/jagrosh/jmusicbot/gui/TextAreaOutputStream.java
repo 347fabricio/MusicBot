@@ -137,23 +137,35 @@ static private String bytesToString(byte[] ba, int str, int len) {
     // MUST BE THE ONLY METHOD THAT TOUCHES textArea!
     @Override
     public synchronized void run() {
-        if(clear) { textArea.setText(""); }
-        values.stream().map((val) -> {
-            curLength+=val.length();
-            return val;
-        }).map((val) -> {
-            if(val.endsWith(EOL1) || val.endsWith(EOL2)) {
-                if(lengths.size()>=maxLines) { textArea.replaceRange("",0,lengths.removeFirst()); }
-                lengths.addLast(curLength);
-                curLength=0;
+        try {
+            if (clear) {
+                textArea.setText("");
             }
-            return val;
-        }).forEach((val) -> {
-            textArea.append(val);
-        });
-        values.clear();
-        clear =false;
-        queue =true;
+            values.stream().map((val) -> {
+                curLength += val.length();
+                return val;
+            }).map((val) -> {
+                if (val.endsWith(EOL1) || val.endsWith(EOL2)) {
+                    if (lengths.size() >= maxLines) {
+                        textArea.replaceRange("", 0, lengths.removeFirst());
+                    }
+                    lengths.addLast(curLength);
+                    curLength = 0;
+                }
+                return val;
+            }).forEach((val) -> {
+                textArea.append(val);
+            });
+            values.clear();
+            clear = false;
+        } catch (Throwable t) {
+            values.clear();
+            clear = false;
+            // Do not rethrow: an uncaught exception on the EDT would stop future log updates
+            // because queue would never be set back to true in finally.
+        } finally {
+            queue = true;
         }
+    }
     }
 } /* END PUBLIC CLASS */

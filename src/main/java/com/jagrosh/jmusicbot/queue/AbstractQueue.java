@@ -15,9 +15,10 @@
  */
 package com.jagrosh.jmusicbot.queue;
 
+import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  *
@@ -26,12 +27,25 @@ import java.util.List;
  */
 public abstract class AbstractQueue<T extends Queueable>
 {
-    protected AbstractQueue(AbstractQueue<T> queue)
+    /**
+     * Creates a new queue, optionally copying state from an existing queue.
+     * 
+     * @param queue The previous queue to copy state from, or null for initial creation
+     * @param maxHistorySize The maximum history size (only used when queue is null)
+     */
+    protected AbstractQueue(AbstractQueue<T> queue, int maxHistorySize)
     {
-        this.list = queue != null ? queue.getList() : new LinkedList<>();
+        // Use ArrayList for O(1) random access (display, shuffle, etc.)
+        // Copy the list when switching queue types to avoid shared mutable state
+        this.list = queue != null ? new ArrayList<>(queue.getList()) : new ArrayList<>();
+        // Reuse history when switching queue types; always apply configured max size so transitions
+        // (including maxHistorySize=0 disabled mode) take effect immediately.
+        this.history = queue != null ? queue.getHistory() : new PlaybackHistory<>(maxHistorySize, qt -> qt instanceof QueuedTrack ? ((QueuedTrack) qt).getTrack().getIdentifier() : qt.getIdentifier());
+        this.history.setMaxSize(maxHistorySize);
     }
 
     protected final List<T> list;
+    protected final PlaybackHistory<T> history;
 
     public abstract int add(T item);
 
@@ -48,7 +62,72 @@ public abstract class AbstractQueue<T extends Queueable>
     }
 
     public T pull() {
+        if (list.isEmpty())
+            return null;
         return list.remove(0);
+    }
+
+    public void addToHistory(T item)
+    {
+        history.add(item);
+    }
+
+    public void setMaxHistorySize(int size)
+    {
+        history.setMaxSize(size);
+    }
+
+    /**
+     * Clears playback history entries.
+     */
+    public void clearHistory()
+    {
+        history.clear();
+    }
+
+    public T removeLastPlayed()
+    {
+        return history.removeFirst();
+    }
+
+    /**
+     * Removes the history entry at the given index (0 = most recent).
+     * Used when a user replays a track from history so it is not retained.
+     *
+     * @param index The history index to remove
+     * @return The removed item, or null if index is out of range
+     */
+    public T removeFromHistoryAt(int index)
+    {
+        return history.removeAt(index);
+    }
+
+    /**
+     * Removes the first history entry that matches the predicate.
+     * Used when a track starts playing to avoid duplicate entries in history.
+     *
+     * @param predicate The condition to match (e.g. same track identifier)
+     * @return true if an entry was removed, false otherwise
+     */
+    public boolean removeFromHistoryFirstMatch(Predicate<T> predicate)
+    {
+        return history.removeFirstMatching(predicate);
+    }
+
+    /**
+     * Rewinds the queue by taking the last played item from history
+     * and optionally pushing the current item back to the front of the queue.
+     * @param current The currently playing item to push back to the queue
+     * @return The previous item to play, or null if history is empty
+     */
+    public T rewind(T current)
+    {
+        T prev = history.removeFirst();
+        if (prev != null && current != null)
+        {
+            list.add(0, current);
+        }
+        return prev;
     }
 
     public boolean isEmpty()
@@ -59,6 +138,11 @@ public abstract class AbstractQueue<T extends Queueable>
     public List<T> getList()
     {
         return list;
+    }
+
+    public PlaybackHistory<T> getHistory()
+    {
+        return history;
     }
 
     public T get(int index) {
@@ -89,12 +173,18 @@ public abstract class AbstractQueue<T extends Queueable>
         list.clear();
     }
 
+    public void clearAll()
+    {
+        list.clear();
+        history.clear();
+    }
+
     public int shuffle(long identifier)
     {
         List<Integer> iset = new ArrayList<>();
         for(int i=0; i<list.size(); i++)
         {
-            if(list.get(i).getIdentifier()==identifier)
+            if(identifier == 0 || list.get(i).getIdentifier()==identifier)
                 iset.add(i);
         }
         for(int j=0; j<iset.size(); j++)

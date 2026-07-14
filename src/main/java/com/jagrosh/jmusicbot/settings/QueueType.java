@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
  */
 public enum QueueType
 {
-    LINEAR("\u23E9", "Linear", LinearQueue::new),     // ⏩
-    FAIR("\uD83D\uDD22", "Fair", FairQueue::new);     // 🔢
+    LINEAR("\u23E9", "Linear", LinearQueue::create),     // ⏩
+    FAIR("\uD83D\uDD22", "Fair", FairQueue::create);     // 🔢
 
     private final String userFriendlyName;
     private final String emoji;
@@ -63,9 +63,17 @@ public enum QueueType
                 .collect(Collectors.toList());
     }
 
-    public <T extends Queueable> AbstractQueue<T> createInstance(AbstractQueue<T> previous)
+    /**
+     * Creates a new queue instance.
+     * 
+     * @param previous The previous queue to copy state from, or null for initial creation
+     * @param maxHistorySize The maximum history size (only used when previous is null)
+     * @param <T> The type of items in the queue
+     * @return A new queue instance
+     */
+    public <T extends Queueable> AbstractQueue<T> createInstance(AbstractQueue<T> previous, int maxHistorySize)
     {
-        return supplier.apply(previous);
+        return supplier.apply(previous, maxHistorySize);
     }
 
     public String getUserFriendlyName()

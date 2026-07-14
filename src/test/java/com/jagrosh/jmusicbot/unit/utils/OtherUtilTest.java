@@ -15,30 +15,41 @@
  */
 package com.jagrosh.jmusicbot.unit.utils;
 
+import com.jagrosh.jmusicbot.BotConfig;
 import com.jagrosh.jmusicbot.utils.OtherUtil;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.io.IOException;
+import java.net.Proxy;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.when;
 
 public class OtherUtilTest
 {
     private MockWebServer mockWebServer;
+    
+    @Mock
+    private BotConfig mockConfig;
 
     @BeforeEach
     void setUp() throws IOException
     {
+        MockitoAnnotations.openMocks(this);
         mockWebServer = new MockWebServer();
         mockWebServer.start();
     }
@@ -238,9 +249,16 @@ public class OtherUtilTest
     @DisplayName("getLatestVersion returns null when API returns empty response")
     void testGetLatestVersion_EmptyResponse() throws IOException
     {
+        // First request returns empty object (no tag_name)
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .setBody("{}")
+                .setHeader("Content-Type", "application/json"));
+
+        // Second request (fallback to all releases) also returns empty
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setBody("[]")
                 .setHeader("Content-Type", "application/json"));
 
         String baseUrl = "http://localhost:" + mockWebServer.getPort() + "/repos/test/repo";
@@ -253,6 +271,12 @@ public class OtherUtilTest
     @DisplayName("getLatestVersion returns null when API call fails")
     void testGetLatestVersion_ApiFailure() throws IOException
     {
+        // First request fails
+        mockWebServer.enqueue(new MockResponse()
+                .setResponseCode(500)
+                .setBody("Internal Server Error"));
+
+        // Second request also fails
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(500)
                 .setBody("Internal Server Error"));
@@ -311,5 +335,145 @@ public class OtherUtilTest
         String result = OtherUtil.getLatestVersion(baseUrl);
 
         assertEquals("0.6.2", result);
+    }
+
+    @Test
+    @DisplayName("makeNonEmpty returns the string if not empty, otherwise returns zero-width space")
+    public void testMakeNonEmpty()
+    {
+        assertEquals("test", OtherUtil.makeNonEmpty("test"));
+        assertEquals("\u200B", OtherUtil.makeNonEmpty(null));
+        assertEquals("\u200B", OtherUtil.makeNonEmpty(""));
+    }
+    
+    @Nested
+    @DisplayName("Proxy-Aware Version Checks")
+    class ProxyAwareVersionChecks
+    {
+        @Test
+        @DisplayName("getLatestVersion(BotConfig) works with null config")
+        void getLatestVersionWithNullConfig() throws IOException
+        {
+            String latestReleaseJson = """
+                    {
+                        "tag_name": "v0.6.2",
+                        "prerelease": false
+                    }
+                    """;
+
+            mockWebServer.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(latestReleaseJson)
+                    .setHeader("Content-Type", "application/json"));
+
+            String baseUrl = "http://localhost:" + mockWebServer.getPort() + "/repos/test/repo";
+            // When config is null, should work without proxy
+            String result = OtherUtil.getLatestVersion(baseUrl, null);
+
+            assertEquals("0.6.2", result);
+        }
+        
+        @Test
+        @DisplayName("getLatestVersion(BotConfig) works when proxy is disabled")
+        void getLatestVersionWithProxyDisabled() throws IOException
+        {
+            String latestReleaseJson = """
+                    {
+                        "tag_name": "v0.6.3",
+                        "prerelease": false
+                    }
+                    """;
+
+            mockWebServer.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(latestReleaseJson)
+                    .setHeader("Content-Type", "application/json"));
+
+            // Mock config with proxy disabled for GitHub
+            when(mockConfig.proxyGithub()).thenReturn(false);
+            when(mockConfig.hasProxy()).thenReturn(true);
+            when(mockConfig.getProxyHost()).thenReturn("127.0.0.1");
+            when(mockConfig.getProxyPort()).thenReturn(8080);
+
+            String baseUrl = "http://localhost:" + mockWebServer.getPort() + "/repos/test/repo";
+            Proxy proxy = null; // No proxy since proxyGithub is false
+            String result = OtherUtil.getLatestVersion(baseUrl, proxy);
+
+            assertEquals("0.6.3", result);
+        }
+        
+        @Test
+        @DisplayName("getLatestVersion(String, Proxy) accepts Proxy parameter")
+        void getLatestVersionWithProxyParameter() throws IOException
+        {
+            String latestReleaseJson = """
+                    {
+                        "tag_name": "v0.6.4",
+                        "prerelease": false
+                    }
+                    """;
+
+            mockWebServer.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(latestReleaseJson)
+                    .setHeader("Content-Type", "application/json"));
+
+            String baseUrl = "http://localhost:" + mockWebServer.getPort() + "/repos/test/repo";
+            // Using Proxy.NO_PROXY to simulate direct connection (null proxy)
+            String result = OtherUtil.getLatestVersion(baseUrl, Proxy.NO_PROXY);
+
+            assertEquals("0.6.4", result);
+        }
+        
+        @Test
+        @DisplayName("getLatestVersion(BotConfig) returns null when config has no proxy configured")
+        void getLatestVersionWithNoProxyConfigured() throws IOException
+        {
+            String latestReleaseJson = """
+                    {
+                        "tag_name": "v0.6.5",
+                        "prerelease": false
+                    }
+                    """;
+
+            mockWebServer.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(latestReleaseJson)
+                    .setHeader("Content-Type", "application/json"));
+
+            // Mock config with no proxy configured
+            when(mockConfig.proxyGithub()).thenReturn(true); // Wants to use proxy
+            when(mockConfig.hasProxy()).thenReturn(false);   // But no proxy configured
+
+            String baseUrl = "http://localhost:" + mockWebServer.getPort() + "/repos/test/repo";
+            // Since hasProxy() is false, proxy should be null even though proxyGithub is true
+            String result = OtherUtil.getLatestVersion(baseUrl, null);
+
+            assertEquals("0.6.5", result);
+        }
+        
+        @Test
+        @DisplayName("Overloaded getLatestVersion() methods maintain backward compatibility")
+        void overloadedMethodsMaintainBackwardCompatibility() throws IOException
+        {
+            String latestReleaseJson = """
+                    {
+                        "tag_name": "v1.0.0",
+                        "prerelease": false
+                    }
+                    """;
+
+            mockWebServer.enqueue(new MockResponse()
+                    .setResponseCode(200)
+                    .setBody(latestReleaseJson)
+                    .setHeader("Content-Type", "application/json"));
+
+            String baseUrl = "http://localhost:" + mockWebServer.getPort() + "/repos/test/repo";
+            
+            // Call the original single-arg version (should still work)
+            String result = OtherUtil.getLatestVersion(baseUrl);
+
+            assertEquals("1.0.0", result);
+        }
     }
 }

@@ -16,6 +16,9 @@
 package com.jagrosh.jmusicbot;
 
 import static com.jagrosh.jmusicbot.config.model.ConfigOption.*;
+import static com.jagrosh.jmusicbot.config.model.ConfigOption.GUI_ENABLED;
+import static com.jagrosh.jmusicbot.config.model.ConfigOption.GUI_THEME;
+import static com.jagrosh.jmusicbot.config.model.ConfigOption.GUI_FONT_SIZE;
 
 import java.nio.file.Path;
 import java.util.Set;
@@ -37,8 +40,8 @@ import com.jagrosh.jmusicbot.config.validation.ConfigValidator.ValidationResult;
 import com.jagrosh.jmusicbot.config.migration.ConfigMigration;
 import com.jagrosh.jmusicbot.config.migration.ConfigMigrationException;
 import com.jagrosh.jmusicbot.config.model.ConfigUpdateType;
-import com.jagrosh.jmusicbot.entities.Prompt;
 import com.jagrosh.jmusicbot.entities.UserInteraction;
+import com.jagrosh.jmusicbot.entities.UserInteraction.Level;
 import com.jagrosh.jmusicbot.utils.OtherUtil;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
 import org.slf4j.Logger;
@@ -57,10 +60,13 @@ public class BotConfig {
     private Path path = null;
     private String token, prefix, altprefix, helpWord, playlistsFolder, logLevel,
             successEmoji, warningEmoji, errorEmoji, loadingEmoji, searchingEmoji,
-            evalEngine;
-    private boolean stayInChannel, songInGame, npImages, updatealerts, useEval, dbots, useYouTubeOauth;
+            evalEngine, guiTheme;
+    private boolean stayInChannel, songInGame, npImages, npMinimalMessage, npShowButtons, showNpProgressBar, updatealerts, useEval, dbots, useYouTubeOauth, guiEnabled;
     private long owner, maxSeconds, aloneTimeUntilStop;
-    private int maxYTPlaylistPages;
+    private long clearChannelAgeDays;
+    private int maxYTPlaylistPages, maxHistorySize, guiFontSize, nasBufferMs, frameBufferMs, proxyPort, clearChannelDeleteLimit;
+    private String proxyHost;
+    private boolean proxyLavaplayer, proxyJda, proxyGithub;
     private double skipratio;
     private OnlineStatus status;
     private Activity game;
@@ -95,11 +101,11 @@ public class BotConfig {
 
             valid = true;
         } catch (ConfigException ex) {
-            userInteraction.alert(Prompt.Level.ERROR, "Config",
+            userInteraction.alert(Level.ERROR, "Config",
                     ex + ": " + ex.getMessage() + "\n\nConfig Location: " + path.toAbsolutePath().toString());
         } catch (ConfigMigrationException ex) {
             LOGGER.error("Config migration failed: {}", ex.getMessage());
-            userInteraction.alert(Prompt.Level.ERROR, "Config Migration",
+            userInteraction.alert(Level.ERROR, "Config Migration",
                     "Failed to migrate configuration: " + ex.getMessage() + "\n\nConfig Location: " + path.toAbsolutePath().toString());
         }
     }
@@ -252,12 +258,16 @@ public class BotConfig {
         stayInChannel = STAY_IN_CHANNEL.getBoolean(config);
         songInGame = SONG_IN_GAME.getBoolean(config);
         npImages = NP_IMAGES.getBoolean(config);
+        npMinimalMessage = NP_MINIMAL_MESSAGE.getBoolean(config);
+        npShowButtons = NP_SHOW_BUTTONS.getBoolean(config);
+        showNpProgressBar = NP_SHOW_PROGRESS_BAR.getBoolean(config);
         updatealerts = UPDATE_ALERTS.getBoolean(config);
         logLevel = LOG_LEVEL.getString(config);
         useEval = USE_EVAL.getBoolean(config);
         evalEngine = EVAL_ENGINE.getString(config);
         maxSeconds = MAX_SECONDS.getLong(config);
         maxYTPlaylistPages = MAX_YT_PLAYLIST_PAGES.getInt(config);
+        maxHistorySize = MAX_HISTORY_SIZE.getInt(config);
         useYouTubeOauth = USE_YOUTUBE_OAUTH.getBoolean(config);
         aloneTimeUntilStop = ALONE_TIME_UNTIL_STOP.getLong(config);
         playlistsFolder = PLAYLISTS_FOLDER.getString(config);
@@ -268,7 +278,33 @@ public class BotConfig {
         loadAudioSources(config, migratedUserConfig);
         
         skipratio = SKIP_RATIO.getDouble(config);
+        clearChannelDeleteLimit = Math.max(0, CLEAR_CHANNEL_DELETE_LIMIT.getInt(config));
+        clearChannelAgeDays = Math.max(0L, CLEAR_CHANNEL_AGE_DAYS.getLong(config));
         dbots = owner == 113156185389092864L;
+        
+        // GUI options
+        guiEnabled = GUI_ENABLED.hasValue(config) ? GUI_ENABLED.getBoolean(config) : true;
+        guiTheme = GUI_THEME.getString(config);
+        guiFontSize = GUI_FONT_SIZE.getInt(config);
+        
+        // Performance options
+        nasBufferMs = NAS_BUFFER_MS.getInt(config);
+        frameBufferMs = FRAME_BUFFER_MS.getInt(config);
+        
+        // Proxy options
+        proxyHost = PROXY_HOST.hasValue(config) ? PROXY_HOST.getString(config) : "";
+        proxyPort = PROXY_PORT.hasValue(config) ? PROXY_PORT.getInt(config) : 0;
+        proxyLavaplayer = PROXY_LAVAPLAYER.hasValue(config) && PROXY_LAVAPLAYER.getBoolean(config);
+        proxyJda = PROXY_JDA.hasValue(config) && PROXY_JDA.getBoolean(config);
+        proxyGithub = PROXY_GITHUB.hasValue(config) && PROXY_GITHUB.getBoolean(config);
+        
+        // Log proxy configuration if enabled
+        if (hasProxy()) {
+            if (proxyLavaplayer || proxyJda || proxyGithub) {
+                LOGGER.info("Proxy configured: {}:{} [lavaplayer={}, jda={}, github={}]",
+                        proxyHost, proxyPort, proxyLavaplayer, proxyJda, proxyGithub);
+            }
+        }
     }
     
     /**
@@ -324,22 +360,26 @@ public class BotConfig {
                     .trim();
             ConfigIO.writeConfigFile(path, content);
         } catch (Exception ex) {
-            userInteraction.alert(Prompt.Level.WARNING, "Config", "Failed to write new config options to config.txt: " + ex
+            userInteraction.alert(Level.WARNING, "Config", "Failed to write new config options to config.txt: " + ex
                     + "\nPlease make sure that the files are not on your desktop or some other restricted area.\n\nConfig Location: "
                     + path.toAbsolutePath().toString());
         }
     }
 
-    public static void writeDefaultConfig() {
-        Prompt prompt = new Prompt(null, null, true, true);
-        prompt.alert(Prompt.Level.INFO, "JMusicBot Config", "Generating default config file");
+    /**
+     * Generates a default configuration file.
+     * 
+     * @param userInteraction The user interaction handler for displaying progress and errors
+     */
+    public static void writeDefaultConfig(UserInteraction userInteraction) {
+        userInteraction.alert(Level.INFO, "JMusicBot Config", "Generating default config file");
         Path path = ConfigIO.getConfigPath();
         try {
-            prompt.alert(Prompt.Level.INFO, "JMusicBot Config",
+            userInteraction.alert(Level.INFO, "JMusicBot Config",
                     "Writing default config file to " + path.toAbsolutePath().toString());
             ConfigIO.writeConfigFile(path, ConfigIO.loadDefaultConfig());
         } catch (Exception ex) {
-            prompt.alert(Prompt.Level.ERROR, "JMusicBot Config",
+            userInteraction.alert(Level.ERROR, "JMusicBot Config",
                     "An error occurred writing the default config file: " + ex.getMessage());
         }
     }
@@ -366,6 +406,14 @@ public class BotConfig {
 
     public double getSkipRatio() {
         return skipratio;
+    }
+
+    public int getClearChannelDeleteLimit() {
+        return clearChannelDeleteLimit;
+    }
+
+    public long getClearChannelAgeDays() {
+        return clearChannelAgeDays;
     }
 
     public long getOwnerId() {
@@ -444,12 +492,28 @@ public class BotConfig {
         return npImages;
     }
 
+    public boolean useMinimalNowPlayingMessage() {
+        return npMinimalMessage;
+    }
+
+    public boolean showNowPlayingButtons() {
+        return npShowButtons;
+    }
+
+    public boolean showNpProgressBar() {
+        return showNpProgressBar;
+    }
+
     public long getMaxSeconds() {
         return maxSeconds;
     }
 
     public int getMaxYTPlaylistPages() {
         return maxYTPlaylistPages;
+    }
+
+    public int getMaxHistorySize() {
+        return maxHistorySize;
     }
 
     public boolean useYouTubeOauth() {
@@ -491,5 +555,54 @@ public class BotConfig {
         if (enabledAudioSources.isEmpty())
             return false;
         return enabledAudioSources.contains(source);
+    }
+
+    public boolean getGuiEnabled() {
+        return guiEnabled;
+    }
+
+    public String getGuiTheme() {
+        return guiTheme;
+    }
+
+    public int getGuiFontSize() {
+        return guiFontSize;
+    }
+    
+    public int getNasBufferMs() {
+        return nasBufferMs;
+    }
+    
+    public int getFrameBufferMs() {
+        return frameBufferMs;
+    }
+    
+    // Proxy getters
+    
+    /**
+     * Returns true if a valid proxy is configured (non-empty host and port > 0).
+     */
+    public boolean hasProxy() {
+        return proxyHost != null && !proxyHost.isEmpty() && proxyPort > 0;
+    }
+    
+    public String getProxyHost() {
+        return proxyHost;
+    }
+    
+    public int getProxyPort() {
+        return proxyPort;
+    }
+    
+    public boolean proxyLavaplayer() {
+        return proxyLavaplayer;
+    }
+    
+    public boolean proxyJda() {
+        return proxyJda;
+    }
+    
+    public boolean proxyGithub() {
+        return proxyGithub;
     }
 }

@@ -27,10 +27,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 public class FairQueueTest
 {
+    private static final int DEFAULT_HISTORY_SIZE = 10;
+
     @Test
     public void differentIdentifierSize()
     {
-        FairQueue<Q> queue = new FairQueue<>(null);
+        FairQueue<Q> queue = new FairQueue<>(null, DEFAULT_HISTORY_SIZE);
         int size = 100;
         for(int i=0; i<size; i++)
             queue.add(new Q(i));
@@ -40,7 +42,7 @@ public class FairQueueTest
     @Test
     public void sameIdentifierSize()
     {
-        FairQueue<Q> queue = new FairQueue<>(null);
+        FairQueue<Q> queue = new FairQueue<>(null, DEFAULT_HISTORY_SIZE);
         int size = 100;
         for(int i=0; i<size; i++)
             queue.add(new Q(0));

@@ -24,6 +24,10 @@ import com.jagrosh.jmusicbot.gui.TextAreaOutputStream;
 /**
  * Utility class for redirecting System.out and System.err to a GUI text area.
  * This allows early redirection during startup so that logs appear in the GUI console.
+ * 
+ * <p>Supports buffer-and-replay: early startup output can be captured in a buffer
+ * (via {@link TeeOutputStream}) and replayed into the GUI console when the GUI
+ * is initialized.</p>
  *
  * @author Arif Banai (arif-banai)
  */
@@ -39,11 +43,32 @@ public class ConsoleUtil {
      * @return The JTextArea that will receive the console output
      */
     public static JTextArea redirectSystemStreams() {
+        return redirectSystemStreamsWithReplay(null);
+    }
+    
+    /**
+     * Redirects System.out and System.err to a GUI text area, first replaying
+     * any buffered early output into the text area.
+     * 
+     * <p>Use this when early startup logs were captured via {@link TeeOutputStream}
+     * before the GUI was initialized. The buffered content is appended to the
+     * text area before redirection begins, so all logs appear in order.</p>
+     * 
+     * @param earlyOutput Buffered output from early startup (may be null or empty)
+     * @return The JTextArea that will receive the console output
+     */
+    public static JTextArea redirectSystemStreamsWithReplay(String earlyOutput) {
         if (sharedTextArea == null) {
             sharedTextArea = new JTextArea();
             sharedTextArea.setLineWrap(true);
             sharedTextArea.setWrapStyleWord(true);
             sharedTextArea.setEditable(false);
+            
+            // Replay buffered early output before redirecting streams
+            if (earlyOutput != null && !earlyOutput.isEmpty()) {
+                sharedTextArea.append(earlyOutput);
+            }
+            
             consoleStream = new PrintStream(new TextAreaOutputStream(sharedTextArea));
             System.setOut(consoleStream);
             System.setErr(consoleStream);

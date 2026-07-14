@@ -52,29 +52,45 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     public final static String STOP_EMOJI  = "\u23F9"; // ⏹
 
     private final static Logger LOGGER = LoggerFactory.getLogger(AudioHandler.class);
-
     private final List<AudioTrack> defaultQueue = new LinkedList<>();
     private final Set<String> votes = new HashSet<>();
     
     private final PlayerManager manager;
     private final AudioPlayer audioPlayer;
     private final long guildId;
-    
+    /** Listener for audio metrics events. Uses NO_OP implementation in no-GUI mode. */
+    private final AudioMetricsListener metricsListener;
+
     private AudioFrame lastFrame;
     private AbstractQueue<QueuedTrack> queue;
+    private String lastReason = null;
+    private volatile String favoritedTrackUri = null;
 
     protected AudioHandler(PlayerManager manager, Guild guild, AudioPlayer player)
     {
         this.manager = manager;
         this.audioPlayer = player;
         this.guildId = guild.getIdLong();
+        // Use NO_OP listener in no-GUI mode to avoid memory allocation
+        this.metricsListener = manager.getBot().isNoGUI() 
+            ? AudioMetricsListener.NO_OP 
+            : new PerformanceMetrics(guildId);
 
-        this.setQueueType(manager.getBot().getSettingsManager().getSettings(guildId).getQueueType());
+        int maxHistorySize = manager.getBot().getConfig().getMaxHistorySize();
+        QueueType queueType = manager.getBot().getSettingsManager().getSettings(guildId).getQueueType();
+        this.queue = queueType.createInstance(null, maxHistorySize);
     }
 
     public void setQueueType(QueueType type)
     {
-        queue = type.createInstance(queue);
+        // History is preserved when switching queue types
+        int maxHistorySize = manager.getBot().getConfig().getMaxHistorySize();
+        queue = type.createInstance(queue, maxHistorySize);
+    }
+
+    public void setLastReason(String reason)
+    {
+        this.lastReason = reason;
     }
 
     public int addTrackToFront(QueuedTrack qtrack)
@@ -86,6 +102,7 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
         }
         else
         {
+            LOGGER.debug("Added track to front of queue: {}", qtrack.getTrack().getInfo().title);
             queue.addAt(0, qtrack);
             return 0;
         }
@@ -98,10 +115,22 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
             audioPlayer.playTrack(qtrack.getTrack());
             return -1;
         }
-        else
-            return queue.add(qtrack);
+
+        LOGGER.debug("Added track to queue: {}", qtrack.getTrack().getInfo().title);
+        return queue.add(qtrack);
     }
     
+    /**
+     * Gets the playback history from the queue.
+     * Most recent tracks are at index 0.
+     * 
+     * @return A list of previously played tracks
+     */
+    public List<QueuedTrack> getPreviousTracks()
+    {
+        return queue.getHistory().getList();
+    }
+
     public AbstractQueue<QueuedTrack> getQueue()
     {
         return queue;
@@ -109,10 +138,23 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     
     public void stopAndClear()
     {
-        queue.clear();
+        LOGGER.debug("Stopping and clearing queue");
+        queue.clearAll();
         defaultQueue.clear();
         audioPlayer.stopTrack();
         //current = null;
+    }
+
+    /**
+     * Stops playback and clears only active queues while preserving history.
+     * Playback history is maintained from track start events.
+     */
+    public void stopAndClearQueuePreserveHistory()
+    {
+        LOGGER.debug("Stopping playback and clearing queue (preserving history)");
+        queue.clear();
+        defaultQueue.clear();
+        audioPlayer.stopTrack();
     }
 
     public boolean isMusicPlaying(JDA jda)
@@ -174,29 +216,48 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     @Override
     public void onTrackEnd(AudioPlayer player, AudioTrack track, AudioTrackEndReason endReason) 
     {
+        // Record track end for timeline
+        String trackTitle = null;
+        String trackUri = null;
+        if (track != null && track.getInfo() != null) {
+            trackTitle = track.getInfo().title;
+            trackUri = track.getInfo().uri;
+        }
+        metricsListener.onTrackEnd(trackTitle, trackUri);
+        
         // Log track end with details for debugging
         if (endReason != AudioTrackEndReason.FINISHED) {
             LOGGER.debug("Track {} ended with reason: {} (Track: {})", 
                     track != null ? track.getIdentifier() : "null",
                     endReason.name(),
-                    track != null && track.getInfo() != null ? track.getInfo().title : "N/A");
+                    trackTitle != null ? trackTitle : "N/A");
         }
-        
+        else if (track != null && track.getInfo() != null) {
+            LOGGER.debug("Track ended: {} Reason: {}", track.getInfo().title, endReason);
+        }
+
         RepeatMode repeatMode = manager.getBot().getSettingsManager().getSettings(guildId).getRepeatMode();
         // if the track ended normally, and we're in repeat mode, re-add it to the queue
         if(endReason==AudioTrackEndReason.FINISHED && repeatMode != RepeatMode.OFF)
         {
             QueuedTrack clone = new QueuedTrack(track.makeClone(), track.getUserData(RequestMetadata.class));
             if(repeatMode == RepeatMode.ALL)
+            {
                 queue.add(clone);
+                lastReason = "Repeating the queue.";
+            }
             else
+            {
                 queue.addAt(0, clone);
+                lastReason = "Repeating the song.";
+            }
         }
         
         if(queue.isEmpty())
         {
             if(!playFromDefault())
             {
+                lastReason = null;
                 manager.getBot().getNowplayingHandler().onTrackUpdate(guildId, null);
                 if(!manager.getBot().getConfig().getStay())
                     manager.getBot().closeAudioConnection(guildId);
@@ -205,15 +266,26 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
                 player.setPaused(false);
             }
         }
-        else
+        else if (endReason != AudioTrackEndReason.REPLACED)
         {
             QueuedTrack qt = queue.pull();
+            if (lastReason == null || (!lastReason.startsWith("Repeating") && !lastReason.startsWith("Skipped")))
+                lastReason = "Playing next song.";
             player.playTrack(qt.getTrack());
         }
     }
 
     @Override
     public void onTrackException(AudioPlayer player, AudioTrack track, FriendlyException exception) {
+        // Record exception for timeline
+        String trackTitle = null;
+        String trackUri = null;
+        if (track != null && track.getInfo() != null) {
+            trackTitle = track.getInfo().title;
+            trackUri = track.getInfo().uri;
+        }
+        metricsListener.onTrackException(trackTitle, trackUri);
+        
         // Build detailed error message with track information
         StringBuilder errorDetails = new StringBuilder();
         errorDetails.append("Track exception occurred:\n");
@@ -274,20 +346,93 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     }
 
     @Override
-    public void onTrackStart(AudioPlayer player, AudioTrack track) 
+    public void onTrackStart(AudioPlayer player, AudioTrack track)
     {
+        // Access the metadata object
+        var info = track.getInfo();
+
+        LOGGER.debug("Track Started Details:");
+        LOGGER.debug(" - Title:      {}", info.title);
+        LOGGER.debug(" - Author:     {}", info.author);
+        LOGGER.debug(" - Duration:   {} ms", info.length);
+        LOGGER.debug(" - Identifier: {}", info.identifier);
+        LOGGER.debug(" - URI:        {}", info.uri);
+        LOGGER.debug(" - Is Stream:  {}", info.isStream);
+        LOGGER.debug(" - Source:     {}", track.getSourceManager() != null ? track.getSourceManager().getSourceName() : "unknown");
+        LOGGER.debug(" - Player Vol: {}", player.getVolume());
+        LOGGER.debug(" - Is Paused:  {}", player.isPaused());
         votes.clear();
-        
-        // Log track start with details for debugging
+        metricsListener.onSessionReset(); // Reset metrics for new track
+
+        // Record track start for timeline and time-to-first-frame tracking
+        String trackTitle = null;
+        String trackUri = null;
         if (track != null && track.getInfo() != null) {
+            trackTitle = track.getInfo().title;
+            trackUri = track.getInfo().uri;
+            
             LOGGER.debug("Starting track: {} (ID: {}, URI: {}, Source: {})",
-                    track.getInfo().title,
+                    trackTitle,
                     track.getIdentifier(),
-                    track.getInfo().uri,
+                    trackUri,
                     track.getSourceManager() != null ? track.getSourceManager().getSourceName() : "Unknown");
         }
-        
+        metricsListener.onTrackStart(trackTitle, trackUri);
+        if (track != null)
+        {
+            QueuedTrack startedTrack = new QueuedTrack(track.makeClone(), track.getUserData(RequestMetadata.class));
+            queue.addToHistory(startedTrack);
+        }
+
+        if (lastReason == null)
+            lastReason = "Playing next song.";
+
         manager.getBot().getNowplayingHandler().onTrackUpdate(guildId, track);
+    }
+    
+    @Override
+    public void onTrackStuck(AudioPlayer player, AudioTrack track, long thresholdMs)
+    {
+        // Record the stuck event in performance metrics
+        String trackTitle = null;
+        String trackUri = null;
+        
+        if (track != null && track.getInfo() != null) {
+            trackTitle = track.getInfo().title;
+            trackUri = track.getInfo().uri;
+        }
+        
+        metricsListener.onTrackStuck(thresholdMs, trackTitle, trackUri);
+        
+        // Build detailed log message
+        StringBuilder details = new StringBuilder();
+        details.append("Track stuck detected (decoder/stream stall):\n");
+        details.append("  Threshold exceeded: ").append(thresholdMs).append("ms\n");
+        
+        if (track != null) {
+            details.append("  Track ID: ").append(track.getIdentifier()).append("\n");
+            AudioTrackInfo info = track.getInfo();
+            if (info != null) {
+                details.append("  Title: ").append(info.title != null ? info.title : "N/A").append("\n");
+                details.append("  URI: ").append(info.uri != null ? info.uri : "N/A").append("\n");
+                details.append("  Position: ").append(track.getPosition()).append("ms / ")
+                       .append(info.length).append("ms\n");
+                details.append("  Source: ").append(track.getSourceManager() != null 
+                    ? track.getSourceManager().getSourceName() : "Unknown").append("\n");
+            }
+        }
+        
+        // Log request metadata if available
+        RequestMetadata rm = track != null ? track.getUserData(RequestMetadata.class) : null;
+        if (rm != null && rm.user != null) {
+            details.append("  Requested by: ").append(rm.user.username)
+                   .append(" (ID: ").append(rm.user.id).append(")\n");
+        }
+        
+        LOGGER.warn("Track {} is stuck after {}ms\n{}", 
+            track != null ? track.getIdentifier() : "null", 
+            thresholdMs, 
+            details.toString());
     }
 
     //
@@ -297,7 +442,11 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
             audioPlayer.getPlayingTrack(),
             jda.getGuildById(guildId),
             audioPlayer.isPaused(),
-            audioPlayer.getVolume()
+            audioPlayer.getVolume(),
+            queue.size(),
+            queue.getHistory().size(),
+            isCurrentTrackFavorited(),
+            lastReason
         );
     }
 
@@ -318,34 +467,44 @@ public class AudioHandler extends AudioEventAdapter implements AudioSendHandler
     {
         return audioPlayer.isPaused() ? PAUSE_EMOJI : PLAY_EMOJI;
     }
-    
-    // Audio Send Handler methods
-    /*@Override
-    public boolean canProvide() 
-    {
-        if (lastFrame == null)
-            lastFrame = audioPlayer.provide();
 
-        return lastFrame != null;
+    public void markCurrentTrackFavorited(String uri)
+    {
+        favoritedTrackUri = uri;
     }
 
-    @Override
-    public byte[] provide20MsAudio() 
+    public boolean isCurrentTrackFavorited()
     {
-        if (lastFrame == null) 
-            lastFrame = audioPlayer.provide();
-
-        byte[] data = lastFrame != null ? lastFrame.getData() : null;
-        lastFrame = null;
-
-        return data;
-    }*/
+        AudioTrack currentTrack = audioPlayer.getPlayingTrack();
+        if (currentTrack == null || currentTrack.getInfo() == null)
+            return false;
+        String currentUri = currentTrack.getInfo().uri;
+        return currentUri != null && currentUri.equals(favoritedTrackUri);
+    }
     
+    // Audio Send Handler methods
     @Override
     public boolean canProvide() 
     {
+        long startNanos = System.nanoTime();
         lastFrame = audioPlayer.provide();
-        return lastFrame != null;
+        long latencyNanos = System.nanoTime() - startNanos;
+        
+        boolean frameAvailable = lastFrame != null;
+        metricsListener.onFrameProvided(frameAvailable, latencyNanos);
+        
+        return frameAvailable;
+    }
+    
+    /**
+     * Gets the performance metrics for this audio handler.
+     *
+     * @return the performance metrics instance, or null if running in no-GUI mode
+     */
+    public PerformanceMetrics getPerformanceMetrics() {
+        return metricsListener instanceof PerformanceMetrics 
+            ? (PerformanceMetrics) metricsListener 
+            : null;
     }
 
     @Override

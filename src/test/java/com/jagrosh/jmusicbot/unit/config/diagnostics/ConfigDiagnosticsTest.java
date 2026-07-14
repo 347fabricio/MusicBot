@@ -205,6 +205,133 @@ class ConfigDiagnosticsTest {
             
             assertTrue(report.getDeprecated().contains("commands.unknownCommand"));
         }
+        
+        @Test
+        @DisplayName("does not flag user-defined transform under playback.transforms as deprecated")
+        void testDetectDeprecatedKeys_userDefinedTransformNotDeprecated() {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("discord", Map.of("token", "test_token", "owner", 123456789L));
+            
+            // User-defined transform with all required fields
+            Map<String, Object> spotifyTransform = new HashMap<>();
+            spotifyTransform.put("regex", "https?://.*spotify.com/track/([A-Za-z0-9]+).*");
+            spotifyTransform.put("replacement", "https://open.spotify.com/track/$1");
+            spotifyTransform.put("selector", "title");
+            spotifyTransform.put("format", "ytsearch:%s");
+            
+            Map<String, Object> transforms = new HashMap<>();
+            transforms.put("spotify", spotifyTransform);
+            
+            Map<String, Object> playback = new HashMap<>();
+            playback.put("transforms", transforms);
+            userMap.put("playback", playback);
+            
+            Config migratedUserConfig = ConfigFactory.parseMap(userMap);
+            
+            // Defaults have empty transforms
+            Map<String, Object> defaultMap = new HashMap<>();
+            Map<String, Object> discord = new HashMap<>();
+            discord.put("token", "");
+            discord.put("owner", 0L);
+            defaultMap.put("discord", discord);
+            
+            Map<String, Object> defaultPlayback = new HashMap<>();
+            defaultPlayback.put("transforms", Map.of()); // empty transforms in defaults
+            defaultMap.put("playback", defaultPlayback);
+            
+            Config defaults = ConfigFactory.parseMap(defaultMap);
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            
+            ConfigDiagnostics.Report report = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            // Should NOT flag any paths under playback.transforms as deprecated
+            assertFalse(report.getDeprecated().contains("playback.transforms.spotify"),
+                    "User-defined transform 'spotify' should not be flagged as deprecated");
+            assertFalse(report.getDeprecated().contains("playback.transforms.spotify.regex"),
+                    "Transform inner key 'regex' should not be flagged as deprecated");
+            assertFalse(report.getDeprecated().contains("playback.transforms.spotify.replacement"),
+                    "Transform inner key 'replacement' should not be flagged as deprecated");
+            assertFalse(report.getDeprecated().contains("playback.transforms.spotify.selector"),
+                    "Transform inner key 'selector' should not be flagged as deprecated");
+            assertFalse(report.getDeprecated().contains("playback.transforms.spotify.format"),
+                    "Transform inner key 'format' should not be flagged as deprecated");
+            
+            // Verify no paths under playback.transforms are in deprecated set
+            for (String deprecatedPath : report.getDeprecated()) {
+                assertFalse(deprecatedPath.startsWith("playback.transforms."),
+                        "No paths under playback.transforms should be deprecated, but found: " + deprecatedPath);
+            }
+        }
+        
+        @Test
+        @DisplayName("does not flag multiple user-defined transforms as deprecated")
+        void testDetectDeprecatedKeys_multipleTransformsNotDeprecated() {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("discord", Map.of("token", "test_token", "owner", 123456789L));
+            
+            // Multiple user-defined transforms
+            Map<String, Object> spotifyTransform = Map.of(
+                    "regex", "https?://.*spotify.com/track/.*",
+                    "replacement", "https://open.spotify.com/track/$1",
+                    "selector", "title",
+                    "format", "ytsearch:%s"
+            );
+            Map<String, Object> youtubeTransform = Map.of(
+                    "regex", "https?://.*youtube.com/.*",
+                    "replacement", "https://www.youtube.com/$1",
+                    "selector", "title",
+                    "format", "%s"
+            );
+            
+            Map<String, Object> transforms = new HashMap<>();
+            transforms.put("spotify", spotifyTransform);
+            transforms.put("youtube", youtubeTransform);
+            
+            Map<String, Object> playback = new HashMap<>();
+            playback.put("transforms", transforms);
+            userMap.put("playback", playback);
+            
+            Config migratedUserConfig = ConfigFactory.parseMap(userMap);
+            
+            Map<String, Object> defaultMap = new HashMap<>();
+            defaultMap.put("discord", Map.of("token", "", "owner", 0L));
+            defaultMap.put("playback", Map.of("transforms", Map.of()));
+            
+            Config defaults = ConfigFactory.parseMap(defaultMap);
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            
+            ConfigDiagnostics.Report report = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            assertFalse(report.getDeprecated().contains("playback.transforms.spotify"));
+            assertFalse(report.getDeprecated().contains("playback.transforms.youtube"));
+        }
+        
+        @Test
+        @DisplayName("still flags unknown keys under playback that are not transforms")
+        void testDetectDeprecatedKeys_unknownPlaybackKeyStillFlagged() {
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("discord", Map.of("token", "test_token", "owner", 123456789L));
+            
+            Map<String, Object> playback = new HashMap<>();
+            playback.put("transforms", Map.of()); // valid empty transforms
+            playback.put("unknownSection", "some value"); // unknown key
+            userMap.put("playback", playback);
+            
+            Config migratedUserConfig = ConfigFactory.parseMap(userMap);
+            
+            Map<String, Object> defaultMap = new HashMap<>();
+            defaultMap.put("discord", Map.of("token", "", "owner", 0L));
+            defaultMap.put("playback", Map.of("transforms", Map.of()));
+            
+            Config defaults = ConfigFactory.parseMap(defaultMap);
+            Config merged = migratedUserConfig.withFallback(defaults).resolve();
+            
+            ConfigDiagnostics.Report report = ConfigDiagnostics.analyze(migratedUserConfig, merged, defaults);
+            
+            // Unknown key should still be flagged
+            assertTrue(report.getDeprecated().contains("playback.unknownSection"),
+                    "Unknown key under playback should be flagged as deprecated");
+        }
     }
     
     @Nested

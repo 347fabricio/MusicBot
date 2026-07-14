@@ -18,11 +18,13 @@ package com.jagrosh.jmusicbot.audio;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import net.dv8tion.jda.api.entities.Guild;
+import org.apache.http.HttpHost;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jagrosh.jmusicbot.Bot;
 import com.jagrosh.jmusicbot.BotConfig;
+import com.jagrosh.jmusicbot.utils.ProxyUtil;
 
 /**
  *
@@ -41,6 +43,18 @@ public class PlayerManager extends DefaultAudioPlayerManager
     public void init()
     {
         BotConfig config = bot.getConfig();
+        
+        // Configure frame buffer for GC protection (default 2000ms = 2 seconds of audio buffered)
+        setFrameBufferDuration(config.getFrameBufferMs());
+        
+        // Configure proxy for Lavaplayer HTTP requests if enabled
+        // This should be done BEFORE registering source managers
+        if (config.proxyLavaplayer() && config.hasProxy()) {
+            HttpHost proxy = ProxyUtil.createApacheProxy(config);
+            setHttpBuilderConfigurator(builder -> builder.setProxy(proxy));
+            LOGGER.info("Lavaplayer configured to use proxy: {}:{}", 
+                    config.getProxyHost(), config.getProxyPort());
+        }
         
         // Register transformative audio sources
         TransformativeAudioSourceManager.createTransforms(config.getTransforms())

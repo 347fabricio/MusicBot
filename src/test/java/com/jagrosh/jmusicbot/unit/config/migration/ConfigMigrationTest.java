@@ -74,25 +74,25 @@ class ConfigMigrationTest {
     class LatestVersionTests {
         
         @Test
-        @DisplayName("getLatestVersion returns 1 from defaults with meta.configVersion = 1")
-        void testGetLatestVersion_returns1() {
+        @DisplayName("getLatestVersion returns 2 from defaults with meta.configVersion = 2")
+        void testGetLatestVersion_returns2() {
             Config defaults = V1ConfigBuilder.create()
-                .withMetaVersion(1)
+                .withMetaVersion(2)
                 .build();
             
             int version = ConfigMigration.getLatestVersion(defaults);
             
-            assertEquals(1, version);
+            assertEquals(2, version);
         }
         
         @Test
-        @DisplayName("getLatestVersion returns 1 for defaults without meta.configVersion")
-        void testGetLatestVersion_noVersion_returns1() {
+        @DisplayName("getLatestVersion returns 2 for defaults without meta.configVersion")
+        void testGetLatestVersion_noVersion_returns2() {
             Config defaults = LegacyConfigBuilder.create().build();
             
             int version = ConfigMigration.getLatestVersion(defaults);
             
-            assertEquals(1, version);
+            assertEquals(2, version);
         }
     }
     
@@ -104,11 +104,11 @@ class ConfigMigrationTest {
         @DisplayName("migrate returns same config when fromVersion >= toVersion")
         void testMigrate_noMigrationNeeded() {
             Config config = V1ConfigBuilder.create()
-                .withMetaVersion(1)
+                .withMetaVersion(2)
                 .withDiscordToken("test_token")
                 .build();
             
-            Config result = ConfigMigration.migrate(config, 1, 1);
+            Config result = ConfigMigration.migrate(config, 2, 2);
             
             assertEquals(config, result);
         }
@@ -136,12 +136,12 @@ class ConfigMigrationTest {
         }
         
         @Test
-        @DisplayName("migrate throws exception for invalid version range")
+        @DisplayName("migrate throws exception for unsupported version range")
         void testMigrate_invalidVersionRange_throwsException() {
             Config config = LegacyConfigBuilder.create().build();
             
             assertThrows(ConfigMigrationException.class, () -> {
-                ConfigMigration.migrate(config, 0, 2); // No migration for 1->2
+                ConfigMigration.migrate(config, 0, 3); // No migration for 2->3
             });
         }
     }

@@ -8,6 +8,10 @@ DOWNLOAD=true
 # when you use the shutdown command
 LOOP=true
 
+# JVM options for running JMusicBot
+# --enable-native-access=ALL-UNNAMED: Required for Java 22+ to load native libraries (jdave, udpqueue)
+JAVA_OPTS="${JAVA_OPTS:---enable-native-access=ALL-UNNAMED}"
+
 download() {
     if [ $DOWNLOAD = true ]; then
         # First, check if the latest release is a pre-release
@@ -47,7 +51,15 @@ download() {
 }
 
 run() {
-    java -Dnogui=true --enable-native-access=ALL-UNNAMED -jar $(ls -t JMusicBot* | head -1)
+    # JVM flags for optimal audio performance (set -Xms/-Xmx via JAVA_OPTS if desired):
+    # -XX:+UseZGC: Sub-millisecond GC pauses (generational mode is default in JDK 24+)
+    # -XX:+AlwaysPreTouch: Pre-allocate memory at startup to avoid page faults
+    # shellcheck disable=SC2086
+    java -XX:+UseZGC \
+         -XX:+AlwaysPreTouch \
+         -Dnogui=true \
+         $JAVA_OPTS \
+         -jar $(ls -t JMusicBot* | head -1)
 }
 
 while

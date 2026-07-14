@@ -51,6 +51,9 @@ public enum ConfigOption {
     STAY_IN_CHANNEL("voice.stayInChannel", ConfigType.BOOLEAN, false, "Whether to stay in voice channel after queue ends"),
     SONG_IN_GAME("presence.songInStatus", ConfigType.BOOLEAN, false, "Whether to show current song in bot status"),
     NP_IMAGES("nowPlaying.images", ConfigType.BOOLEAN, false, "Whether to show YouTube thumbnails in nowplaying"),
+    NP_MINIMAL_MESSAGE("nowPlaying.minimalMessage", ConfigType.BOOLEAN, false, "Whether to render now-playing messages in a compact/minimal layout"),
+    NP_SHOW_BUTTONS("nowPlaying.showButtons", ConfigType.BOOLEAN, false, "Whether to include interactive playback buttons in now-playing messages"),
+    NP_SHOW_PROGRESS_BAR("nowPlaying.showProgressBar", ConfigType.BOOLEAN, false, "Whether to show the now-playing progress bar"),
     UPDATE_ALERTS("updates.alerts", ConfigType.BOOLEAN, false, "Whether to alert owner about updates"),
     USE_EVAL("dangerous.eval", ConfigType.BOOLEAN, false, "Whether to enable eval command (DANGEROUS)"),
     USE_YOUTUBE_OAUTH("playback.youtube.useOAuth", ConfigType.BOOLEAN, false, "Whether to use YouTube OAuth2 for playback"),
@@ -58,13 +61,32 @@ public enum ConfigOption {
     // Numeric options
     MAX_SECONDS("playback.maxTrackSeconds", ConfigType.LONG, false, "Maximum track length in seconds (0 = no limit)"),
     MAX_YT_PLAYLIST_PAGES("playback.maxYouTubePlaylistPages", ConfigType.INT, false, "Maximum YouTube playlist pages to load"),
+    MAX_HISTORY_SIZE("playback.maxHistorySize", ConfigType.INT, false, "Maximum number of tracks to keep in history (0 = disabled)"),
     ALONE_TIME_UNTIL_STOP("voice.aloneTimeUntilStopSeconds", ConfigType.LONG, false, "Seconds to wait alone before leaving (0 = never)"),
     SKIP_RATIO("playback.skipRatio", ConfigType.DOUBLE, false, "Ratio of users needed to vote skip"),
+    CLEAR_CHANNEL_DELETE_LIMIT("commands.clearChannel.deleteLimit", ConfigType.INT, false, "Max messages deleted by clearchannel (0 = unlimited)"),
+    CLEAR_CHANNEL_AGE_DAYS("commands.clearChannel.ageDays", ConfigType.LONG, false, "Max message age in days for clearchannel (0 = unlimited)"),
     
     // Complex options - Nested configurations
     ALIASES("commands.aliases", ConfigType.CONFIG, false, "Command aliases configuration"),
     TRANSFORMS("playback.transforms", ConfigType.CONFIG, false, "Audio source transforms configuration"),
-    AUDIO_SOURCES("playback.audioSources", ConfigType.CONFIG, false, "Audio sources configuration (nested booleans)");
+    AUDIO_SOURCES("playback.audioSources", ConfigType.CONFIG, false, "Audio sources configuration (nested booleans)"),
+    
+    // GUI options
+    GUI_ENABLED("gui.enabled", ConfigType.BOOLEAN, false, "Enable or disable the GUI (default true)"),
+    GUI_THEME("gui.theme", ConfigType.STRING, false, "GUI theme: light, dark, darcula, intellij"),
+    GUI_FONT_SIZE("gui.fontSize", ConfigType.INT, false, "Base font size for GUI components (8-24)"),
+    
+    // Performance options
+    NAS_BUFFER_MS("performance.nasBufferMs", ConfigType.INT, false, "NAS buffer duration in ms (protects against GC pauses)"),
+    FRAME_BUFFER_MS("performance.frameBufferMs", ConfigType.INT, false, "Lavaplayer frame buffer duration in ms"),
+    
+    // Proxy options
+    PROXY_HOST("proxy.host", ConfigType.STRING, false, "Proxy server hostname"),
+    PROXY_PORT("proxy.port", ConfigType.INT, false, "Proxy server port"),
+    PROXY_LAVAPLAYER("proxy.lavaplayer", ConfigType.BOOLEAN, false, "Route Lavaplayer audio requests through proxy"),
+    PROXY_JDA("proxy.jda", ConfigType.BOOLEAN, false, "Route JDA Discord API traffic through proxy"),
+    PROXY_GITHUB("proxy.github", ConfigType.BOOLEAN, false, "Route GitHub version checks through proxy");
     
     private final String key;
     private final ConfigType type;

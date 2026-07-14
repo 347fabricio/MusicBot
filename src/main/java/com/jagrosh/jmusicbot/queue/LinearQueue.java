@@ -22,9 +22,17 @@ package com.jagrosh.jmusicbot.queue;
  */
 public class LinearQueue<T extends Queueable> extends AbstractQueue<T>
 {
-    public LinearQueue(AbstractQueue<T> queue)
+    public LinearQueue(AbstractQueue<T> queue, int maxHistorySize)
     {
-        super(queue);
+        super(queue, maxHistorySize);
+    }
+
+    /**
+     * Factory method for use with QueueSupplier.
+     */
+    public static <T extends Queueable> LinearQueue<T> create(AbstractQueue<T> queue, int maxHistorySize)
+    {
+        return new LinearQueue<>(queue, maxHistorySize);
     }
 
     @Override
@@ -33,5 +41,4 @@ public class LinearQueue<T extends Queueable> extends AbstractQueue<T>
         list.add(item);
         return list.size() - 1;
     }
-
 }

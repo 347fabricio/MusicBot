@@ -16,6 +16,7 @@
 package com.jagrosh.jmusicbot.settings;
 
 import com.jagrosh.jdautilities.command.GuildSettingsProvider;
+import com.jagrosh.jmusicbot.BotConfig;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
@@ -40,8 +41,10 @@ public class Settings implements GuildSettingsProvider
     private QueueType queueType;
     private String prefix;
     private double skipRatio;
+    private NowPlayingLayoutMode nowPlayingLayoutMode;
+    private NowPlayingButtonsMode nowPlayingButtonsMode;
 
-    public Settings(SettingsManager manager, String textId, String voiceId, String roleId, int volume, String defaultPlaylist, RepeatMode repeatMode, String prefix, double skipRatio, QueueType queueType)
+    public Settings(SettingsManager manager, String textId, String voiceId, String roleId, int volume, String defaultPlaylist, RepeatMode repeatMode, String prefix, double skipRatio, QueueType queueType, NowPlayingLayoutMode nowPlayingLayoutMode, NowPlayingButtonsMode nowPlayingButtonsMode)
     {
         this.manager = manager;
         try
@@ -74,9 +77,11 @@ public class Settings implements GuildSettingsProvider
         this.prefix = prefix;
         this.skipRatio = skipRatio;
         this.queueType = queueType;
+        this.nowPlayingLayoutMode = nowPlayingLayoutMode;
+        this.nowPlayingButtonsMode = nowPlayingButtonsMode;
     }
     
-    public Settings(SettingsManager manager, long textId, long voiceId, long roleId, int volume, String defaultPlaylist, RepeatMode repeatMode, String prefix, double skipRatio, QueueType queueType)
+    public Settings(SettingsManager manager, long textId, long voiceId, long roleId, int volume, String defaultPlaylist, RepeatMode repeatMode, String prefix, double skipRatio, QueueType queueType, NowPlayingLayoutMode nowPlayingLayoutMode, NowPlayingButtonsMode nowPlayingButtonsMode)
     {
         this.manager = manager;
         this.textId = textId;
@@ -88,6 +93,8 @@ public class Settings implements GuildSettingsProvider
         this.prefix = prefix;
         this.skipRatio = skipRatio;
         this.queueType = queueType;
+        this.nowPlayingLayoutMode = nowPlayingLayoutMode;
+        this.nowPlayingButtonsMode = nowPlayingButtonsMode;
     }
     
     // Getters
@@ -134,6 +141,26 @@ public class Settings implements GuildSettingsProvider
     public QueueType getQueueType()
     {
         return queueType;
+    }
+
+    public NowPlayingLayoutMode getNowPlayingLayoutMode()
+    {
+        return nowPlayingLayoutMode;
+    }
+
+    public NowPlayingButtonsMode getNowPlayingButtonsMode()
+    {
+        return nowPlayingButtonsMode;
+    }
+
+    public boolean useMinimalNowPlayingMessage(BotConfig config)
+    {
+        return nowPlayingLayoutMode.resolve(config.useMinimalNowPlayingMessage());
+    }
+
+    public boolean showNowPlayingButtons(BotConfig config)
+    {
+        return nowPlayingButtonsMode.resolve(config.showNowPlayingButtons());
     }
 
     @Override
@@ -194,6 +221,18 @@ public class Settings implements GuildSettingsProvider
     public void setQueueType(QueueType queueType)
     {
         this.queueType = queueType;
+        this.manager.writeSettings();
+    }
+
+    public void setNowPlayingLayoutMode(NowPlayingLayoutMode nowPlayingLayoutMode)
+    {
+        this.nowPlayingLayoutMode = nowPlayingLayoutMode;
+        this.manager.writeSettings();
+    }
+
+    public void setNowPlayingButtonsMode(NowPlayingButtonsMode nowPlayingButtonsMode)
+    {
+        this.nowPlayingButtonsMode = nowPlayingButtonsMode;
         this.manager.writeSettings();
     }
 }

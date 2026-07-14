@@ -32,6 +32,15 @@ public class ConfigDiagnostics {
     private static final String LYRICS_PREFIX = "lyrics.";
     
     /**
+     * Paths whose nested keys are user-defined and should not be flagged as deprecated.
+     * For example, playback.transforms allows arbitrary transform names (spotify, youtube, etc.)
+     * defined by the user.
+     */
+    private static final Set<String> PATHS_WITH_DYNAMIC_NESTED_KEYS = Set.of(
+            "playback.transforms"
+    );
+    
+    /**
      * Analyzes a user configuration against defaults and returns a diagnostic report.
      * 
      * @param migratedUserConfig the migrated user config (after migration, before merging with defaults)
@@ -135,6 +144,7 @@ public class ConfigDiagnostics {
     
     /**
      * Recursively collects paths from user config that don't exist in defaults.
+     * Skips paths that are under dynamic nested key paths (e.g. playback.transforms.spotify).
      * 
      * @param config the user config to traverse
      * @param prefix the current path prefix
@@ -145,6 +155,11 @@ public class ConfigDiagnostics {
     private static void collectUserPaths(Config config, String prefix, Set<String> deprecated,
                                         Set<String> knownKeys, Config defaults) {
         traverseConfig(config, prefix, (fullPath, key, value) -> {
+            // Skip paths that are under dynamic nested key paths (user-defined nested keys)
+            if (isUnderDynamicNestedKeyPath(fullPath)) {
+                return;
+            }
+            
             if (value.valueType() == com.typesafe.config.ConfigValueType.OBJECT) {
                 try {
                     Config nestedConfig = config.getConfig(key);
@@ -169,6 +184,22 @@ public class ConfigDiagnostics {
                 }
             }
         });
+    }
+    
+    /**
+     * Checks if a path is under a dynamic nested key path.
+     * For example, "playback.transforms.spotify" is under "playback.transforms".
+     * 
+     * @param fullPath the full path to check
+     * @return true if the path is a child of a dynamic nested key path
+     */
+    private static boolean isUnderDynamicNestedKeyPath(String fullPath) {
+        for (String dynamicPath : PATHS_WITH_DYNAMIC_NESTED_KEYS) {
+            if (fullPath.startsWith(dynamicPath + ".")) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**

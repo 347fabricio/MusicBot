@@ -69,7 +69,13 @@ public class SettingsManager implements GuildSettingsManager<Settings>
                             o.has("repeat_mode")     ? RepeatMode.valueOfOrDefault(o.get("repeat_mode").asText(), RepeatMode.OFF) : RepeatMode.OFF,
                             o.has("prefix")          ? o.get("prefix").asText()                     : null,
                             o.has("skip_ratio")      ? o.get("skip_ratio").asDouble()                 : -1,
-                            o.has("queue_type")      ? QueueType.valueOfOrDefault(o.get("queue_type").asText(), QueueType.FAIR)  : QueueType.FAIR));
+                            o.has("queue_type")      ? QueueType.valueOfOrDefault(o.get("queue_type").asText(), QueueType.FAIR)  : QueueType.FAIR,
+                            o.has("now_playing_layout_mode")
+                                    ? NowPlayingLayoutMode.valueOfOrDefault(o.get("now_playing_layout_mode").asText(), NowPlayingLayoutMode.INHERIT)
+                                    : NowPlayingLayoutMode.INHERIT,
+                            o.has("now_playing_buttons_mode")
+                                    ? NowPlayingButtonsMode.valueOfOrDefault(o.get("now_playing_buttons_mode").asText(), NowPlayingButtonsMode.INHERIT)
+                                    : NowPlayingButtonsMode.INHERIT));
                 }
             }
         } catch (NoSuchFileException e) {
@@ -108,7 +114,8 @@ public class SettingsManager implements GuildSettingsManager<Settings>
 
     private Settings createDefaultSettings()
     {
-        return new Settings(this, 0, 0, 0, 100, null, RepeatMode.OFF, null, -1, QueueType.FAIR);
+        return new Settings(this, 0, 0, 0, 100, null, RepeatMode.OFF, null, -1, QueueType.FAIR,
+                NowPlayingLayoutMode.INHERIT, NowPlayingButtonsMode.INHERIT);
     }
 
     protected void writeSettings()
@@ -135,6 +142,10 @@ public class SettingsManager implements GuildSettingsManager<Settings>
                 o.put("skip_ratio", s.getSkipRatio());
             if(s.getQueueType() != QueueType.FAIR)
                 o.put("queue_type", s.getQueueType().name());
+            if(s.getNowPlayingLayoutMode() != NowPlayingLayoutMode.INHERIT)
+                o.put("now_playing_layout_mode", s.getNowPlayingLayoutMode().name());
+            if(s.getNowPlayingButtonsMode() != NowPlayingButtonsMode.INHERIT)
+                o.put("now_playing_buttons_mode", s.getNowPlayingButtonsMode().name());
             obj.set(Long.toString(key), o);
         });
         try {

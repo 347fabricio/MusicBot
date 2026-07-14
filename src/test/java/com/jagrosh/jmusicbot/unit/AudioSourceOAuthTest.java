@@ -15,7 +15,9 @@
  */
 package com.jagrosh.jmusicbot.unit;
 
+import com.jagrosh.jmusicbot.BotConfig;
 import dev.lavalink.youtube.YoutubeAudioSourceManager;
+import dev.lavalink.youtube.clients.skeleton.Client;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,8 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for YouTube OAuth functionality in AudioSource.
@@ -173,12 +177,14 @@ class AudioSourceOAuthTest {
             Method setupMethod = getSetupYoutubeAudioSourceManagerMethod();
             assertNotNull(setupMethod, "setupYoutubeAudioSourceManager method should exist");
             
+            BotConfig mockConfig = createMockConfig(true, 10);
+            
             // Call with useOauth=true - this should trigger the OAuth flow
             // We can't easily verify the OAuth flow was triggered without mocking,
             // but we can verify the method completes without throwing
             assertDoesNotThrow(() -> {
                 YoutubeAudioSourceManager result = (YoutubeAudioSourceManager) 
-                    setupMethod.invoke(null, true, 10);
+                    setupMethod.invoke(null, mockConfig);
                 assertNotNull(result, "Should return a configured YoutubeAudioSourceManager");
             }, "setupYoutubeAudioSourceManager should complete without throwing when OAuth is enabled");
         }
@@ -188,10 +194,12 @@ class AudioSourceOAuthTest {
         void oauthFlowNotTriggeredWhenUseOauthIsFalse() throws Exception {
             Method setupMethod = getSetupYoutubeAudioSourceManagerMethod();
             
+            BotConfig mockConfig = createMockConfig(false, 10);
+            
             // Call with useOauth=false - this should NOT trigger OAuth
             assertDoesNotThrow(() -> {
                 YoutubeAudioSourceManager result = (YoutubeAudioSourceManager) 
-                    setupMethod.invoke(null, false, 10);
+                    setupMethod.invoke(null, mockConfig);
                 assertNotNull(result, "Should return a configured YoutubeAudioSourceManager");
             }, "setupYoutubeAudioSourceManager should complete without OAuth when disabled");
         }
@@ -199,9 +207,16 @@ class AudioSourceOAuthTest {
         private Method getSetupYoutubeAudioSourceManagerMethod() throws NoSuchMethodException {
             Class<?> audioSourceClass = com.jagrosh.jmusicbot.audio.AudioSource.class;
             Method method = audioSourceClass.getDeclaredMethod("setupYoutubeAudioSourceManager", 
-                boolean.class, int.class);
+                BotConfig.class);
             method.setAccessible(true);
             return method;
+        }
+        
+        private BotConfig createMockConfig(boolean useOauth, int maxYTPlaylistPages) {
+            BotConfig config = mock(BotConfig.class);
+            when(config.useYouTubeOauth()).thenReturn(useOauth);
+            when(config.getMaxYTPlaylistPages()).thenReturn(maxYTPlaylistPages);
+            return config;
         }
     }
 
@@ -217,21 +232,26 @@ class AudioSourceOAuthTest {
             // With OAuth enabled
             Object[] oauthClients = (Object[]) buildClients.invoke(null, true);
             assertNotNull(oauthClients, "Should return clients for OAuth mode");
-            assertEquals(5, oauthClients.length, "OAuth mode should use 5 clients (3 metadata-only: AndroidVr, MWeb, Web; 2 OAuth: TvHtml5Embedded, Tv)");
+            assertEquals(5, oauthClients.length, "OAuth mode should use 5 clients");
             
-            // Verify client types - first 3 are metadata-only (playback disabled)
-            assertEquals("AndroidVr", oauthClients[0].getClass().getSimpleName(),
-                "First OAuth client should be AndroidVr (metadata-only)");
-            assertEquals("MWeb", oauthClients[1].getClass().getSimpleName(),
-                "Second OAuth client should be MWeb (metadata-only)");
-            assertEquals("Web", oauthClients[2].getClass().getSimpleName(),
-                "Third OAuth client should be Web (metadata-only)");
-            
-            // Last 2 are OAuth clients for streaming
-            assertEquals("TvHtml5Embedded", oauthClients[3].getClass().getSimpleName(),
-                "Fourth OAuth client should be TvHtml5Embedded (OAuth streaming)");
-            assertEquals("Tv", oauthClients[4].getClass().getSimpleName(),
-                "Fifth OAuth client should be Tv (OAuth streaming)");
+            // Verify client types
+            assertEquals("AndroidVrWithThumbnail", oauthClients[0].getClass().getSimpleName(),
+                "First OAuth client should be <AndroidVrWithThumbnail>");
+            assertEquals("MWebWithThumbnail", oauthClients[1].getClass().getSimpleName(),
+                "Second OAuth client should be <MWebWithThumbnail>");
+            assertEquals("WebWithThumbnail", oauthClients[2].getClass().getSimpleName(),
+                "Third OAuth client should be <WebWithThumbnail>");
+            assertEquals("Tv", oauthClients[3].getClass().getSimpleName(),
+                "Fourth OAuth client should be Tv");
+            assertEquals("TvHtml5SimplyWithThumbnail", oauthClients[4].getClass().getSimpleName(),
+                "Fifth OAuth client should be TvHtml5SimplyWithThumbnail");
+            // Verify first 3 clients have playback disabled (metadataOnly)
+            for (int i = 0; i < 3; i++) {
+                Client client = (Client) oauthClients[i];
+                assertFalse(client.getOptions().getPlayback(), 
+                    String.format("OAuth client %d (%s) should have playback disabled", 
+                        i, client.getClass().getSimpleName()));
+            }
         }
 
         @Test
@@ -242,15 +262,17 @@ class AudioSourceOAuthTest {
             // Without OAuth
             Object[] nonOauthClients = (Object[]) buildClients.invoke(null, false);
             assertNotNull(nonOauthClients, "Should return clients for non-OAuth mode");
-            assertEquals(3, nonOauthClients.length, "Non-OAuth mode should use 3 clients (AndroidVr, MWeb, Web)");
+            assertEquals(4, nonOauthClients.length, "Non-OAuth mode should use 4 clients");
             
             // Verify client types
-            assertEquals("AndroidVr", nonOauthClients[0].getClass().getSimpleName(),
-                "First non-OAuth client should be AndroidVr");
-            assertEquals("MWeb", nonOauthClients[1].getClass().getSimpleName(),
-                "Second non-OAuth client should be MWeb");
-            assertEquals("Web", nonOauthClients[2].getClass().getSimpleName(),
-                "Third non-OAuth client should be Web");
+            assertEquals("AndroidVrWithThumbnail", nonOauthClients[0].getClass().getSimpleName(),
+                "First non-OAuth client should be <AndroidVrWithThumbnail>");
+            assertEquals("MWebWithThumbnail", nonOauthClients[1].getClass().getSimpleName(),
+                "Second non-OAuth client should be <MWebWithThumbnail>");
+            assertEquals("WebWithThumbnail", nonOauthClients[2].getClass().getSimpleName(),
+                "Third non-OAuth client should be <WebWithThumbnail>");
+            assertEquals("TvHtml5SimplyWithThumbnail", nonOauthClients[3].getClass().getSimpleName(),
+                "Fourth non-OAuth client should be <TvHtml5SimplyWithThumbnail>");
         }
 
         @Test
@@ -258,10 +280,12 @@ class AudioSourceOAuthTest {
         void youtubeOptionsIncludeRemoteCipherForOAuth() throws Exception {
             Method buildOptions = getBuildYoutubeOptionsMethod();
             
+            BotConfig mockConfig = createMockConfig(true, 10);
+            
             // We can't easily verify the internal state of YoutubeSourceOptions,
             // but we can verify the method completes without throwing
             assertDoesNotThrow(() -> {
-                Object options = buildOptions.invoke(null, true);
+                Object options = buildOptions.invoke(null, mockConfig);
                 assertNotNull(options, "Should return options for OAuth mode");
             });
         }
@@ -275,9 +299,16 @@ class AudioSourceOAuthTest {
         
         private Method getBuildYoutubeOptionsMethod() throws NoSuchMethodException {
             Class<?> audioSourceClass = com.jagrosh.jmusicbot.audio.AudioSource.class;
-            Method method = audioSourceClass.getDeclaredMethod("buildYoutubeOptions", boolean.class);
+            Method method = audioSourceClass.getDeclaredMethod("buildYoutubeOptions", BotConfig.class);
             method.setAccessible(true);
             return method;
+        }
+        
+        private BotConfig createMockConfig(boolean useOauth, int maxYTPlaylistPages) {
+            BotConfig config = mock(BotConfig.class);
+            when(config.useYouTubeOauth()).thenReturn(useOauth);
+            when(config.getMaxYTPlaylistPages()).thenReturn(maxYTPlaylistPages);
+            return config;
         }
     }
 }
