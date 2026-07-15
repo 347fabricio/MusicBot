@@ -25,3 +25,9 @@ Thumbs.db
 
 # Other
 *.lock
+
+.venv/
+.settings/
+.project
+.classpath
+.slashcommands.hash
