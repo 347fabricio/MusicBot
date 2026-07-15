@@ -35,6 +35,8 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.components.actionrow.ActionRow;
+import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
@@ -42,6 +44,11 @@ import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
+import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
+import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
+import net.dv8tion.jda.api.entities.emoji.Emoji;
+import java.util.concurrent.TimeUnit;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -71,6 +78,8 @@ public class MusicService {
 
 	private final Bot bot;
 	private final Map<PlaylistDraftKey, PlaylistDraftState> playlistDrafts = new ConcurrentHashMap<>();
+
+	private Message loadingMessage;
 
 	public MusicService(Bot bot) {
 		this.bot = bot;
@@ -294,6 +303,8 @@ public class MusicService {
 				type = "track";
 			else if (args.contains("/playlist/"))
 				type = "playlist";
+			else if (args.contains("/album/"))
+				type = "album";
 			Matcher idM = idPattern.matcher(args);
 			if (idM.find())
 				id = idM.group(1);
@@ -304,9 +315,171 @@ public class MusicService {
 			if (result != null && result.success && !result.tracks.isEmpty()) {
 				String query = result.tracks.get(0) + " " + result.artists.get(0);
 				if (result.tracks.size() > 1) {
-					System.out.println("DEBUG: Playlist");
+					String successEmoji = bot.getConfig().getSuccess();
+					String warningEmoji = bot.getConfig().getWarning();
+					String errorEmoji = bot.getConfig().getError();
+
+					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
+							bot.getAudioLoadWrapper().wrap(query, new AudioLoadResultHandler() {
+
+								@Override
+								public void trackLoaded(AudioTrack track) {
+									processFirstTrack(track);
+								}
+
+								@Override
+								public void playlistLoaded(AudioPlaylist playlist) {
+									if (!playlist.getTracks().isEmpty()) {
+										processFirstTrack(playlist.getTracks().get(0));
+									} else {
+										noMatches();
+									}
+								}
+
+								@Override
+								public void noMatches() {
+									channel.sendMessage(warningEmoji + " No results found for the first track.")
+											.queue();
+								}
+
+								@Override
+								public void loadFailed(FriendlyException exception) {
+									channel.sendMessage(errorEmoji + " Error loading first track.").queue();
+								}
+
+								private void processFirstTrack(AudioTrack track) {
+									if (isTooLong(track)) {
+										channel.sendMessage(FormatUtil.filter(warningEmoji + " Track too long."))
+												.queue();
+										return;
+									}
+
+									if (guild.getSelfMember().hasPermission(channel,
+											net.dv8tion.jda.api.Permission.MESSAGE_MANAGE)) {
+										channel.getHistory().retrievePast(5).queue(messages -> {
+											for (Message msg : messages) {
+												if (msg.getAuthor().getIdLong() == member.getIdLong()
+														&& msg.getContentRaw().contains("spotify.com")) {
+													msg.delete().queue(null, err -> {
+													});
+													break;
+												}
+											}
+										}, err -> {
+										});
+									}
+
+									AudioHandler handler = getHandler(guild);
+									RequestMetadata rm = new RequestMetadata(member.getUser(),
+											new RequestMetadata.RequestInfo(query, track.getInfo().uri),
+											channel.getIdLong());
+
+									int pos = (handler.getPlayer().getPlayingTrack() == null) ? 0
+											: handler.getQueue().size() + 1;
+
+									String addMsg = FormatUtil.filter(successEmoji + " Added **" + track.getInfo().title
+											+ "** (`" + TimeUtil.formatTime(track.getDuration()) + "`) "
+											+ (pos > 0 ? " to the queue at position " + pos : "to begin playing"));
+
+									String promptMsg = addMsg + "\n" + warningEmoji + " This track has a playlist of **"
+											+ result.tracks.size() + "** tracks attached. Select 📥 to load playlist.";
+
+									List<Button> buttons = new ArrayList<>();
+									buttons.add(Button.success("load_playlist", "Load Playlist")
+											.withEmoji(Emoji.fromFormatted("📥")));
+									buttons.add(Button.danger("cancel_playlist", "Cancel")
+											.withEmoji(Emoji.fromFormatted("🚫")));
+
+									MessageCreateBuilder createBuilder = new MessageCreateBuilder()
+											.setContent(promptMsg).setComponents(ActionRow.of(buttons));
+
+									channel.sendMessage(createBuilder.build()).queue(msg -> {
+
+										handler.addTrack(new QueuedTrack(track, rm));
+
+										bot.getWaiter().waitForEvent(ButtonInteractionEvent.class,
+												e -> e.getMessageId().equals(msg.getId())
+														&& e.getUser().getIdLong() == member.getIdLong(),
+												e -> {
+													if (e.getComponentId().equals("load_playlist")) {
+														e.editMessage(addMsg + "\n" + successEmoji + " Loading **"
+																+ (result.tracks.size() - 1)
+																+ "** additional tracks...").setComponents().queue();
+														loadRestOfSpotify(addMsg, msg);
+													} else {
+														e.editMessage(addMsg).setComponents().queue();
+													}
+												}, 30, TimeUnit.SECONDS,
+												() -> msg.editMessage(addMsg).setComponents().queue(null, error -> {
+												}));
+									}, error -> {
+										handler.addTrack(new QueuedTrack(track, rm));
+									});
+								}
+
+								private void loadRestOfSpotify(String addMsg, Message m) {
+									java.util.concurrent.atomic.AtomicInteger progress = new java.util.concurrent.atomic.AtomicInteger(
+											1);
+									java.util.concurrent.atomic.AtomicInteger loadedCount = new java.util.concurrent.atomic.AtomicInteger(
+											0);
+
+									for (int i = 1; i < result.tracks.size(); i++) {
+										String trackQuery = result.tracks.get(i) + " " + result.artists.get(i);
+
+										bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + trackQuery, bot
+												.getAudioLoadWrapper().wrap(trackQuery, new AudioLoadResultHandler() {
+													@Override
+													public void trackLoaded(AudioTrack t) {
+														addT(t);
+													}
+
+													@Override
+													public void playlistLoaded(AudioPlaylist p) {
+														if (!p.getTracks().isEmpty()) {
+															addT(p.getTracks().get(0));
+														} else {
+															check();
+														}
+													}
+
+													@Override
+													public void noMatches() {
+														check();
+													}
+
+													@Override
+													public void loadFailed(FriendlyException e) {
+														check();
+													}
+
+													private void addT(AudioTrack t) {
+														if (!isTooLong(t)) {
+															AudioHandler h = getHandler(guild);
+															RequestMetadata rm = new RequestMetadata(member.getUser(),
+																	new RequestMetadata.RequestInfo(trackQuery,
+																			t.getInfo().uri),
+																	channel.getIdLong());
+															h.addTrack(new QueuedTrack(t, rm));
+															loadedCount.incrementAndGet();
+														}
+														check();
+													}
+
+													private void check() {
+														if (progress.incrementAndGet() == result.tracks.size()) {
+															m.editMessage(addMsg + "\n" + successEmoji + " Loaded **"
+																	+ loadedCount.get() + "** additional tracks!")
+																	.queue();
+														}
+													}
+												}));
+									}
+								}
+							}));
+					return;
 				} else {
-					LOG.info("Loading spotify track: guild={}, user={}, query=\"{}\"", guild.getId(), member.getUser().getName(), query + " - " + args );
+					LOG.info("Loading spotify track: guild={}, user={}, query=\"{}\"", guild.getId(),
+							member.getUser().getName(), query + " - " + args);
 					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
 							bot.getAudioLoadWrapper().wrap(query, new AudioLoadResultHandlers.PlayResultHandler(this,
 									bot, output, guild, member, query, true, channel)));
