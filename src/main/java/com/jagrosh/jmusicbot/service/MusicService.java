@@ -365,7 +365,10 @@ public class MusicService {
 
 									String promptMsg = addMsg + "\n" + warningEmoji + " This track has a playlist of **"
 											+ result.tracks.size() + "** tracks attached.\n"
-											+ "⚠️ *Loading Spotify playlists is discouraged, as the bot scraps metadata from Spotify and searches for it on YouTube.*\n\n";
+											+ "⚠️ **Loading Spotify playlists is discouraged:**\n"
+										    + "\t • **Low Accuracy:** It plays the first YouTube result, which may be a cover, live version, or incorrect video.\n"
+										    + "\t • **High Overhead:** Searching many tracks at once can trigger YouTube rate limits.\n\n"
+										    + "*Do you still want to load it?*";
 
 									List<Button> buttons = new ArrayList<>();
 									buttons.add(Button.success("load_playlist", "Load Full Playlist")
