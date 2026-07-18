@@ -30,7 +30,6 @@ import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
@@ -180,7 +179,7 @@ public final class AudioLoadResultHandlers {
 								} else {
 									event.editMessage(addMsg).setComponents().queue();
 								}
-							}, 30, TimeUnit.SECONDS, () -> msg.editMessage(addMsg).setComponents().queue());
+							}, 20, TimeUnit.SECONDS, () -> msg.editMessage(addMsg).setComponents().queue());
 				});
 			});
 		}
@@ -235,7 +234,7 @@ public final class AudioLoadResultHandlers {
 						.append(track.getInfo().author).append("`\n");
 				buttons.add(Button.secondary("track_" + i, String.valueOf(i + 1)));
 			}
-			buttons.add(Button.secondary("cancel", Emoji.fromFormatted("✖️")));
+			buttons.add(Button.danger("cancel", Emoji.fromFormatted("🚫")));
 
 			MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(sb.toString())
 					.setComponents(ActionRow.of(buttons));
@@ -269,7 +268,7 @@ public final class AudioLoadResultHandlers {
 			                    //
 								e.editMessage(addMsg).setComponents().queue();
 	
-							}, 20, TimeUnit.SECONDS, () -> msg.delete().queue(null, error -> {
+							}, 30, TimeUnit.SECONDS, () -> msg.delete().queue(null, error -> {
 							}));
 
 				});
