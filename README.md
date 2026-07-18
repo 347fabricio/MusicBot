@@ -21,6 +21,7 @@ A cross-platform Discord music bot with a clean interface, and that is easy to s
 
 This version of JMusicBot changes/updates various dependencies. To ensure your bot continues to function correctly, please note the following mandatory changes:
 
+- **Python 3.10+ Minimum:** The bot requires **Python 3.10+ or higher**.
 - **Java 25 Minimum:** The bot now requires **Java 25 or higher**.
 
 - **LibDave/udpqueue:** You **must** have **glibc >= 2.38**. _If you are using Docker, this is already handled for you._
@@ -77,6 +78,27 @@ JMusicBot supports all sources and formats supported by [lavaplayer](https://git
 Please see the [Setup Page](https://jmusicbot.com/setup) to run this bot yourself!
 
 ## Running Directly (Without Docker)
+
+To begin with:
+
+```
+# Create the virtual environment (replace "python3.12" with your installed version)
+python3.12 -m venv .venv
+
+# Activate the environment
+source .venv/bin/activate
+
+# Install required dependencies
+pip install spotifyscraper
+
+# Deactivate the environment after installation
+deactivate
+
+# To run in headless mode (no GUI)
+# java -Dfile.encoding=UTF-8 -Dnogui=true --enable-native-access=ALL-UNNAMED -jar JMusicBot-x.y.z-All.jar
+```
+
+> Note: Please replace `JMusicBot-x.y.z-All.jar` with the actual version number of the file you downloaded.
 
 When running JMusicBot directly (not in Docker), make sure to pass these JVM flags:
 
