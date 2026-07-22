@@ -37,8 +37,6 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import net.dv8tion.jda.api.JDA;
-import net.dv8tion.jda.api.components.actionrow.ActionRow;
-import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
@@ -46,15 +44,9 @@ import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
-import net.dv8tion.jda.api.interactions.InteractionHook;
-import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
-import net.dv8tion.jda.api.entities.emoji.Emoji;
-import java.util.concurrent.TimeUnit;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -63,7 +55,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.nio.file.Path;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -296,28 +287,28 @@ public class MusicService {
 		SpotifyParser.SpotifyData spotifyData = SpotifyParser.parse(args);
 
 		if (spotifyData != null) {
-		    SpotifyBridge.SpotifyResult result = SpotifyBridge.getTrackInfo(spotifyData.type(), spotifyData.id());
-		    
-		    if (result != null && result.success && !result.tracks.isEmpty()) {
-		        String query = result.tracks.get(0) + " " + result.artists.get(0);
-		        
-		        if (result.tracks.size() > 1) {
-		            bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
-		                bot.getAudioLoadWrapper().wrap(query, 
-		                    new SpotifyPlaylistFirstTrackHandler(bot, guild, member, channel, output, result, query, this)));
-		            return;
-		        } else {
-		            bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
-		                bot.getAudioLoadWrapper().wrap(query, 
-		                    new AudioLoadResultHandlers.PlayResultHandler(this, bot, output, guild, member, query, true, channel)));
-		        }
-		    }
+			SpotifyBridge.SpotifyResult result = SpotifyBridge.getTrackInfo(spotifyData.type(), spotifyData.id());
+
+			if (result != null && result.success && !result.tracks.isEmpty()) {
+				String query = result.tracks.get(0) + " " + result.artists.get(0);
+
+				if (result.tracks.size() > 1) {
+					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
+							bot.getAudioLoadWrapper().wrap(query, new SpotifyPlaylistFirstTrackHandler(bot, guild,
+									member, channel, output, result, query, this)));
+					return;
+				} else {
+					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
+							bot.getAudioLoadWrapper().wrap(query, new AudioLoadResultHandlers.PlayResultHandler(this,
+									bot, output, guild, member, query, true, channel)));
+				}
+			}
 		} else {
-		    bot.getPlayerManager().loadItemOrdered(guild, args,
-		        bot.getAudioLoadWrapper().wrap(args, 
-		            new AudioLoadResultHandlers.PlayResultHandler(this, bot, output, guild, member, args, false, channel)));
+			bot.getPlayerManager().loadItemOrdered(guild, args,
+					bot.getAudioLoadWrapper().wrap(args, new AudioLoadResultHandlers.PlayResultHandler(this, bot,
+							output, guild, member, args, false, channel)));
 		}
-		
+
 	}
 
 	public void previous(Guild guild, Member member, OutputAdapter output) {

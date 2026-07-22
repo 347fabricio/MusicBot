@@ -234,7 +234,7 @@ public final class AudioLoadResultHandlers {
 						.append(track.getInfo().author).append("`\n");
 				buttons.add(Button.secondary("track_" + i, String.valueOf(i + 1)));
 			}
-			buttons.add(Button.danger("cancel", Emoji.fromFormatted("🚫")));
+			buttons.add(Button.danger("cancel_playlist", "🚫 Cancel"));
 
 			MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(sb.toString())
 					.setComponents(ActionRow.of(buttons));

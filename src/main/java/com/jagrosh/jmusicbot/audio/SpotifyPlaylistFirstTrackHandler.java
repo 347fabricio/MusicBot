@@ -1,6 +1,7 @@
 package com.jagrosh.jmusicbot.audio;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -24,7 +25,6 @@ import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 
@@ -102,10 +102,8 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 						+ "`) " + (pos > 0 ? " to the queue at position " + pos : "to begin playing"));
 
 		String promptMsg = addMsg + "\n" + warningEmoji + " This track has a playlist of **" + result.tracks.size()
-				+ "** tracks attached.\n" + "⚠️ **Loading Spotify playlists is discouraged:**\n"
-				+ "\t • **Low Accuracy:** It plays the first YouTube result, which may be a cover, live version, or incorrect video.\n"
-				+ "\t • **High Overhead:** Searching many tracks at once can trigger YouTube rate limits.\n\n"
-				+ "*Do you still want to load it?*";
+				+ "** tracks attached.\n" + "⚠️ **Loading Spotify playlists may not always play the exact desired tracks!**\n"
+				+ "\t*Do you still want to load it?*";
 
 		List<Button> buttons = new ArrayList<>();
 		buttons.add(Button.success("load_playlist", "📥 Load Full Playlist"));
@@ -115,6 +113,7 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 		sb.append(promptMsg);
 		MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(sb.toString())
 				.setComponents(ActionRow.of(buttons));
+
 		LOG.info("Loading spotify playlist prompt: guild={}, user={}, total_tracks={}", guild.getId(),
 				member.getUser().getName(), result.tracks.size());
 
@@ -132,9 +131,9 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 							}
 							if (e.getComponentId().equals("load_playlist")) {
 								e.deferEdit().queue(hook -> {
-									hook.editOriginal("🔄 Loading **" + result.tracks.size()
-											+ "** tracks from Spotify playlist!")
-											.setComponents(java.util.Collections.emptyList())
+									hook.editOriginal(
+											"🔄 Loading " + result.tracks.size() + " Spotify tracks **(only valid matches will be added)!**")
+											.setComponents(Collections.emptyList())
 											.queue(message -> SpotifyBulkLoader.loadRestOfPlaylist(bot, guild, member,
 													channel, result, musicService, addMsg, hook));
 								});
@@ -142,7 +141,7 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 										"Spotify playlist loading approved by user: guild={}, user={}, loading_tracks={}",
 										guild.getId(), member.getUser().getName(), result.tracks.size() - 1);
 							}
-						}, 20, TimeUnit.SECONDS, () -> {
+						}, 30, TimeUnit.SECONDS, () -> {
 							msg.editMessage(addMsg).setComponents().queue();
 							LOG.info("Spotify playlist prompt timed out: guild={}, user={}", guild.getId(),
 									member.getUser().getName());
