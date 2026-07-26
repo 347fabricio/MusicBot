@@ -38,23 +38,23 @@ def get_track_data():
                 case "album":
                     album = client.get_album(trackId)
                     data = {
-                        "tracks": [t.name for t in album.tracks if t],
-                        "artists": [t.artists[0].name if t.artists else "" for t in album.tracks if t],
-                        "duration_ms": [t.duration_ms for t in album.tracks if t]
-                    }
+					    "tracks": [t.name for t in album.tracks if t],
+					    "artists": [t.artists[0].name if t and t.artists else "" for t in album.tracks if t],
+					    "duration_ms": [t.duration_ms for t in album.tracks if t]
+					}
                 case "episode":
                     episode = client.get_episode(trackId)
                     data = {
                         "tracks": [episode.name],
                         "artists": [""],
-                        "duration_ms": [episode.duration_ms]
+                    	"duration_ms": [episode.duration_ms]
                     }
                 case _:
                     print(json.dumps({"error": "unknown type"}))
                     sys.exit(1)
             
             print(json.dumps(data))
-            sys.exit(0) # Indica sucesso para o Java (exitCode = 0)
+            sys.exit(0)
             
     except NotFoundError:
         print(json.dumps({"error": "No such track."}))

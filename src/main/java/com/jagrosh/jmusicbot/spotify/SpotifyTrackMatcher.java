@@ -1,4 +1,4 @@
-package com.jagrosh.jmusicbot.utils;
+package com.jagrosh.jmusicbot.spotify;
 
 import com.jagrosh.jmusicbot.service.MusicService;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
@@ -10,14 +10,15 @@ import org.slf4j.LoggerFactory;
 public class SpotifyTrackMatcher {
 	private static final Logger LOG = LoggerFactory.getLogger(MusicService.class);
 
-	public static AudioTrack selectBestMatch(List<AudioTrack> youtubeResults, String spotifyTitle,
-			String spotifyArtist) {
+	public static AudioTrack selectBestMatch(List<AudioTrack> youtubeResults, String spotifyTitle, String spotifyArtist,
+			Integer spotifyDurationMs) {
 		if (youtubeResults == null || youtubeResults.isEmpty()) {
 			return null;
 		}
 
 		String spArtist = isolateArtistName(spotifyArtist);
 		String spTitle = spotifyTitle.toLowerCase().trim();
+		Integer spDurationMs = spotifyDurationMs;
 
 		AudioTrack fallbackMatch = null;
 
@@ -38,9 +39,19 @@ public class SpotifyTrackMatcher {
 				LOG.info("[Perfect Match] ytTitle: \"{}\" | ytCh: \"{}\"", ytTitle, ytArtist);
 				return track;
 			} else if (containsArtist && containsTitle) {
+				if (spDurationMs != null && spDurationMs > 0) {
+					long maxAllowedDuration = (long) (spDurationMs * 1.30);
+					if (track.getDuration() > maxAllowedDuration) {
+						LOG.warn(
+								"[Duration Reject] Track exceeded 30% limit. ytDuration: {}ms | spDuration: {}ms | ytTitle: \"{}\" | ytCh: \"{}\"",
+								track.getDuration(), spDurationMs, ytTitle, ytChannel);
+						continue;
+					}
+				}
+
 				if (ytFullText.contains("official") || ytFullText.contains("audio") || ytFullText.contains("áudio")
 						|| ytFullText.contains("remaster") || ytFullText.contains("remastered")) {
-					LOG.info("[Official Match] ytTitle: \"{}\" | ytCh: \"{}\"", ytTitle, ytArtist);
+					LOG.info("[Official/Remastered Audio Match] ytTitle: \"{}\" | ytCh: \"{}\"", ytTitle, ytArtist);
 					return track;
 				}
 

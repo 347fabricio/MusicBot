@@ -1,4 +1,4 @@
-package com.jagrosh.jmusicbot.utils;
+package com.jagrosh.jmusicbot.spotify;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -10,7 +10,8 @@ public class SpotifyParser {
         if (!args.contains("spotify.com")) return null;
 
         String type = null;
-        if (args.contains("/track/") || args.contains("/episode/")) type = "track";
+        if (args.contains("/track/")) type = "track";
+        else if (args.contains("/episode/")) type = "episode";
         else if (args.contains("/playlist/")) type = "playlist";
         else if (args.contains("/album/")) type = "album";
 

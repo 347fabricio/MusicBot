@@ -1,4 +1,4 @@
-package com.jagrosh.jmusicbot.utils;
+package com.jagrosh.jmusicbot.spotify;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,12 +12,14 @@ public class SpotifyBridge {
 	public static class SpotifyResult {
 		public List<String> tracks;
 		public List<String> artists;
+		public List<Integer> durationMs;
 		public boolean success;
 
-		public SpotifyResult(List<String> tracks, List<String> artists, boolean success) {
+		public SpotifyResult(List<String> tracks, List<String> artists, List<Integer> durationMs, boolean success) {
 			this.tracks = tracks;
 			this.artists = artists;
 			this.success = success;
+			this.durationMs = durationMs;
 		}
 	}
 
@@ -37,7 +39,7 @@ public class SpotifyBridge {
 
 			if (exitCode != 0) {
 				System.err.println("[SpotifyBridge] Python failed with exit code " + exitCode + ": " + jsonRes);
-				return new SpotifyResult(null, null, false);
+				return new SpotifyResult(null, null, null, false);
 			}
 
 			if (jsonRes != null && !jsonRes.trim().isEmpty()) {
@@ -47,29 +49,32 @@ public class SpotifyBridge {
 				if (root.has("success") && !root.get("success").asBoolean()) {
 					String errorMsg = root.has("error") ? root.get("error").asText() : "Python unknown error";
 					System.err.println("[SpotifyBridge] Python failed: " + errorMsg);
-					return new SpotifyResult(null, null, false);
+					return new SpotifyResult(null, null, null, false);
 				}
 
 				JsonNode tracksNode = root.get("tracks");
 				JsonNode artistsNode = root.get("artists");
+				JsonNode durationMsNode = root.get("duration_ms");;
 
 				List<String> tracksList = new ArrayList<>();
 				List<String> artistsList = new ArrayList<>();
+				List<Integer> durationMsList = new ArrayList<>();
 
 				if (tracksNode != null && tracksNode.isArray()) {
 					for (int i = 0; i < tracksNode.size(); i++) {
 						tracksList.add(tracksNode.get(i).asText());
 						artistsList.add(artistsNode.get(i).asText());
+						durationMsList.add(Integer.parseInt(durationMsNode.get(i).asText()));
 					}
 				}
 
 				boolean isSuccess = !tracksList.isEmpty();
-				return new SpotifyResult(tracksList, artistsList, isSuccess);
+				return new SpotifyResult(tracksList, artistsList, durationMsList, isSuccess);
 			}
 		} catch (Exception e) {
 			System.err.println("[SpotifyBridge] Exception when executing Python script: " + e.getMessage());
 			e.printStackTrace();
 		}
-		return new SpotifyResult(null, null, false);
+		return new SpotifyResult(null, null, null, false);
 	}
 }

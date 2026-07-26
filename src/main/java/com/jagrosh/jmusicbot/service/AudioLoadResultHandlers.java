@@ -20,11 +20,14 @@ import com.jagrosh.jmusicbot.audio.AudioHandler;
 import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
+import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
+
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.components.actionrow.ActionRow;
 import net.dv8tion.jda.api.components.buttons.Button;
@@ -37,6 +40,7 @@ import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -224,22 +228,19 @@ public final class AudioLoadResultHandlers {
 		}
 
 		private void displayTrackSelection(List<AudioTrack> topTracks, AudioPlaylist playlist) {
-			int limit = Math.min(3, topTracks.size());
-			StringBuilder sb = new StringBuilder("");
-
 			List<Button> buttons = new ArrayList<>();
-			for (int i = 0; i < limit; i++) {
-				AudioTrack track = topTracks.get(i);
-				sb.append("`").append(i + 1).append(".` **").append(track.getInfo().title).append("** - `")
-						.append(track.getInfo().author).append("`\n");
-				buttons.add(Button.secondary("track_" + i, String.valueOf(i + 1)));
-			}
-			buttons.add(Button.danger("cancel_playlist", "🚫 Cancel"));
 
-			MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(sb.toString())
+			for (int i = 0; i < topTracks.size(); i++)
+				buttons.add(Button.secondary("track_" + i, String.valueOf(i + 1)));
+
+			EmbedBuilder selectionEmbed = EmbedFactory.createMultiTrackEmbed(topTracks);
+
+			buttons.add(Button.danger("cancel", "🚫 Cancel"));
+
+			MessageEditBuilder editBuilder = new MessageEditBuilder().setEmbeds(selectionEmbed.build())
 					.setComponents(ActionRow.of(buttons));
 
-			output.editMessage(sb.toString(), m -> {
+			output.editMessage("\u2800", m -> {
 				m.editMessage(editBuilder.build()).queue(msg -> {
 					bot.getWaiter().waitForEvent(ButtonInteractionEvent.class,
 							e -> e.getMessageId().equals(msg.getId()) && e.getUser().getIdLong() == member.getIdLong(),
@@ -249,30 +250,69 @@ public final class AudioLoadResultHandlers {
 									return;
 								}
 								int index = Integer.parseInt(e.getComponentId().split("_")[1]);
-			                    AudioTrack track = topTracks.get(index);
+								AudioTrack track = topTracks.get(index);
 
-			                    AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
-			                    
-			                    RequestMetadata rm = new RequestMetadata(
-			                        member.getUser(),
-			                        new RequestMetadata.RequestInfo(args, track.getInfo().uri),
-			                        channel.getIdLong()
-			                    );
-			                    QueuedTrack qt = new QueuedTrack(track, rm);
-			                    handler.addTrack(qt);
+								AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
 
-			                    int pos = handler.getQueue().size();
-			                    String addMsg = FormatUtil.filter(bot.getConfig().getSuccess() + " Added **"
-			                        + track.getInfo().title + "** (`" + com.jagrosh.jmusicbot.utils.TimeUtil.formatTime(track.getDuration()) + "`) "
-			                        + (pos > 0 ? " to the queue at position " + pos : "to begin playing"));
-			                    //
-								e.editMessage(addMsg).setComponents().queue();
-	
+								RequestMetadata rm = new RequestMetadata(member.getUser(),
+										new RequestMetadata.RequestInfo(args, track.getInfo().uri),
+										channel.getIdLong());
+								QueuedTrack qt = new QueuedTrack(track, rm);
+								handler.addTrack(qt);
+
+								int pos = handler.getQueue().size();
+								String addMsg = FormatUtil.filter(bot.getConfig().getSuccess() + " Added **"
+										+ track.getInfo().title + "** (`" + TimeUtil.formatTime(track.getDuration())
+										+ "`) " + (pos > 0 ? " to the queue at position " + pos : "to begin playing"));
+								//
+								e.editMessage(addMsg).setComponents().setEmbeds().queue();
+
 							}, 30, TimeUnit.SECONDS, () -> msg.delete().queue(null, error -> {
 							}));
 
 				});
 			});
+		}
+
+		public class EmbedFactory {
+			public static EmbedBuilder createMultiTrackEmbed(List<AudioTrack> tracks) {
+				EmbedBuilder builder = new EmbedBuilder().setColor(Color.decode("#070707"))
+						.setTitle("🎵 Track Selection");
+
+				if (!tracks.isEmpty() && tracks.get(0).getInfo().artworkUrl != null) {
+					builder.setThumbnail(tracks.get(0).getInfo().artworkUrl);
+				}
+
+				for (int i = 0; i < tracks.size(); i++) {
+					AudioTrack track = tracks.get(i);
+
+					String safeTitle = TrackUtil.getFormattedTitle(track.getInfo().title);
+
+					String fieldName = "`" + (i + 1) + ".` " + track.getInfo().author;
+					String fieldValue = "[" + safeTitle + "](" + track.getInfo().uri + ") `("
+							+ TimeUtil.formatTime(track.getDuration()) + ")`";
+
+					builder.addField(fieldName, fieldValue, false);
+				}
+
+				return builder;
+			}
+		}
+
+		public class TrackUtil {
+			public static String getFormattedTitle(String title) {
+				if (title == null) {
+					return "Unknown Title";
+				}
+
+				String trimmedTitle = title.trim().replaceAll("[\\[\\]]", "");
+				int maxLength = 50; // title + " " + (1:00:00)
+				if (trimmedTitle.length() > maxLength) {
+					return trimmedTitle.substring(0, maxLength) + "...";
+				}
+
+				return trimmedTitle;
+			}
 		}
 
 		private void handlePlaylistLoadResult(AudioPlaylist playlist, int count) {

@@ -1,4 +1,4 @@
-package com.jagrosh.jmusicbot.audio;
+package com.jagrosh.jmusicbot.spotify;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,12 +9,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jagrosh.jmusicbot.Bot;
+import com.jagrosh.jmusicbot.audio.AudioHandler;
+import com.jagrosh.jmusicbot.audio.QueuedTrack;
+import com.jagrosh.jmusicbot.audio.RequestMetadata;
+import com.jagrosh.jmusicbot.service.AudioLoadResultHandlers;
 import com.jagrosh.jmusicbot.service.MusicService;
 import com.jagrosh.jmusicbot.service.MusicService.OutputAdapter;
+import com.jagrosh.jmusicbot.spotify.SpotifyBridge.SpotifyResult;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
-import com.jagrosh.jmusicbot.utils.SpotifyBridge;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
-import com.jagrosh.jmusicbot.utils.SpotifyBridge.SpotifyResult;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
@@ -91,18 +94,9 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 			return;
 		}
 
-		AudioHandler handler = musicService.getHandler(guild);
-		RequestMetadata rm = new RequestMetadata(member.getUser(),
-				new RequestMetadata.RequestInfo(query, track.getInfo().uri), channel.getIdLong());
-
-		int pos = (handler.getPlayer().getPlayingTrack() == null) ? 0 : handler.getQueue().size() + 1;
-
-		String addMsg = FormatUtil.filter(
-				successEmoji + " Added **" + track.getInfo().title + "** (`" + TimeUtil.formatTime(track.getDuration())
-						+ "`) " + (pos > 0 ? " to the queue at position " + pos : "to begin playing"));
-
-		String promptMsg = addMsg + "\n" + warningEmoji + " This track has a playlist of **" + result.tracks.size()
-				+ "** tracks attached.\n" + "⚠️ **Loading Spotify playlists may not always play the exact desired tracks!**\n"
+		String promptMsg = warningEmoji + " This track has a playlist of **" + result.tracks.size()
+				+ "** tracks attached.\n"
+				+ "⚠️ **Loading Spotify playlists may not always play the exact desired tracks!**\n"
 				+ "\t*Do you still want to load it?*";
 
 		List<Button> buttons = new ArrayList<>();
@@ -118,31 +112,29 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 				member.getUser().getName(), result.tracks.size());
 
 		output.editMessage(sb.toString(), m -> {
-			handler.addTrack(new QueuedTrack(track, rm));
 			m.editMessage(editBuilder.build()).queue(msg -> {
 				bot.getWaiter().waitForEvent(ButtonInteractionEvent.class,
 						e -> e.getMessageId().equals(msg.getId()) && e.getUser().getIdLong() == member.getIdLong(),
 						e -> {
 							if (e.getComponentId().equals("cancel_playlist")) {
-								e.editMessage(addMsg).setComponents().queue();
+								e.editMessage(promptMsg).setComponents().queue();
 								LOG.info("Spotify playlist loading canceled by user: guild={}, user={}", guild.getId(),
 										member.getUser().getName());
 								return;
 							}
 							if (e.getComponentId().equals("load_playlist")) {
 								e.deferEdit().queue(hook -> {
-									hook.editOriginal(
-											"🔄 Loading " + result.tracks.size() + " Spotify tracks **(only valid matches will be added)!**")
+									hook.editOriginal("🔄 Loading " + result.tracks.size() + " Spotify tracks.")
 											.setComponents(Collections.emptyList())
-											.queue(message -> SpotifyBulkLoader.loadRestOfPlaylist(bot, guild, member,
-													channel, result, musicService, addMsg, hook));
+											.queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
+													channel, result, musicService, hook, successEmoji));
 								});
 								LOG.info(
 										"Spotify playlist loading approved by user: guild={}, user={}, loading_tracks={}",
 										guild.getId(), member.getUser().getName(), result.tracks.size() - 1);
 							}
 						}, 30, TimeUnit.SECONDS, () -> {
-							msg.editMessage(addMsg).setComponents().queue();
+							msg.editMessage(promptMsg).setComponents().queue();
 							LOG.info("Spotify playlist prompt timed out: guild={}, user={}", guild.getId(),
 									member.getUser().getName());
 						});
