@@ -44,7 +44,8 @@ import java.util.function.Consumer;
  *
  * @author John Grosh (john.a.grosh@gmail.com)
  */
-public class PlaylistLoader {
+public class PlaylistLoader
+{
 	private static final Logger LOG = LoggerFactory.getLogger(PlaylistLoader.class);
 	private static final String FAVORITES_PLAYLIST_NAME = "favorites";
 	private static final byte LF = (byte) '\n';
@@ -54,66 +55,80 @@ public class PlaylistLoader {
 		INVALID_CONFIG, STORAGE_UNAVAILABLE, PLAYLIST_NOT_FOUND
 	}
 
-	public static final class PlaylistError {
+	public static final class PlaylistError
+	{
 		private final PlaylistErrorType type;
 		private final String message;
 		private final String configuredPath;
 		private final Throwable cause;
 
-		private PlaylistError(PlaylistErrorType type, String message, String configuredPath, Throwable cause) {
+		private PlaylistError(PlaylistErrorType type, String message, String configuredPath, Throwable cause)
+		{
 			this.type = type;
 			this.message = message;
 			this.configuredPath = configuredPath;
 			this.cause = cause;
 		}
 
-		public static PlaylistError of(PlaylistErrorType type, String message, String configuredPath, Throwable cause) {
+		public static PlaylistError of(PlaylistErrorType type, String message, String configuredPath, Throwable cause)
+		{
 			return new PlaylistError(type, message, configuredPath, cause);
 		}
 
-		public PlaylistErrorType getType() {
+		public PlaylistErrorType getType()
+		{
 			return type;
 		}
 
-		public String getMessage() {
+		public String getMessage()
+		{
 			return message;
 		}
 
-		public String getConfiguredPath() {
+		public String getConfiguredPath()
+		{
 			return configuredPath;
 		}
 
-		public Throwable getCause() {
+		public Throwable getCause()
+		{
 			return cause;
 		}
 	}
 
-	public static final class PlaylistResult<T> {
+	public static final class PlaylistResult<T>
+	{
 		private final T value;
 		private final PlaylistError error;
 
-		private PlaylistResult(T value, PlaylistError error) {
+		private PlaylistResult(T value, PlaylistError error)
+		{
 			this.value = value;
 			this.error = error;
 		}
 
-		public static <T> PlaylistResult<T> success(T value) {
+		public static <T> PlaylistResult<T> success(T value)
+		{
 			return new PlaylistResult<>(value, null);
 		}
 
-		public static <T> PlaylistResult<T> failure(PlaylistError error) {
+		public static <T> PlaylistResult<T> failure(PlaylistError error)
+		{
 			return new PlaylistResult<>(null, error);
 		}
 
-		public boolean isSuccess() {
+		public boolean isSuccess()
+		{
 			return error == null;
 		}
 
-		public T getValue() {
+		public T getValue()
+		{
 			return value;
 		}
 
-		public PlaylistError getError() {
+		public PlaylistError getError()
+		{
 			return error;
 		}
 	}
@@ -122,42 +137,51 @@ public class PlaylistLoader {
 		APPENDED, ALREADY_PRESENT
 	}
 
-	public static final class AppendIfAbsentResult {
+	public static final class AppendIfAbsentResult
+	{
 		private final AppendIfAbsentStatus status;
 
-		private AppendIfAbsentResult(AppendIfAbsentStatus status) {
+		private AppendIfAbsentResult(AppendIfAbsentStatus status)
+		{
 			this.status = status;
 		}
 
-		public static AppendIfAbsentResult appended() {
+		public static AppendIfAbsentResult appended()
+		{
 			return new AppendIfAbsentResult(AppendIfAbsentStatus.APPENDED);
 		}
 
-		public static AppendIfAbsentResult alreadyPresent() {
+		public static AppendIfAbsentResult alreadyPresent()
+		{
 			return new AppendIfAbsentResult(AppendIfAbsentStatus.ALREADY_PRESENT);
 		}
 
-		public AppendIfAbsentStatus getStatus() {
+		public AppendIfAbsentStatus getStatus()
+		{
 			return status;
 		}
 	}
 
-	private static final class FileSignature {
+	private static final class FileSignature
+	{
 		private final boolean exists;
 		private final long size;
 		private final long lastModifiedMillis;
 
-		private FileSignature(boolean exists, long size, long lastModifiedMillis) {
+		private FileSignature(boolean exists, long size, long lastModifiedMillis)
+		{
 			this.exists = exists;
 			this.size = size;
 			this.lastModifiedMillis = lastModifiedMillis;
 		}
 
-		private static FileSignature missing() {
+		private static FileSignature missing()
+		{
 			return new FileSignature(false, 0L, 0L);
 		}
 
-		private static FileSignature of(Path path) throws IOException {
+		private static FileSignature of(Path path) throws IOException
+		{
 			if (!Files.exists(path))
 				return missing();
 			FileTime lastModified = Files.getLastModifiedTime(path);
@@ -165,7 +189,8 @@ public class PlaylistLoader {
 		}
 
 		@Override
-		public boolean equals(Object other) {
+		public boolean equals(Object other)
+		{
 			if (this == other)
 				return true;
 			if (!(other instanceof FileSignature that))
@@ -174,16 +199,19 @@ public class PlaylistLoader {
 		}
 
 		@Override
-		public int hashCode() {
+		public int hashCode()
+		{
 			return Objects.hash(exists, size, lastModifiedMillis);
 		}
 	}
 
-	private static final class FavoritesCache {
+	private static final class FavoritesCache
+	{
 		private final FileSignature signature;
 		private final Set<String> entries;
 
-		private FavoritesCache(FileSignature signature, Set<String> entries) {
+		private FavoritesCache(FileSignature signature, Set<String> entries)
+		{
 			this.signature = signature;
 			this.entries = entries;
 		}
@@ -194,77 +222,95 @@ public class PlaylistLoader {
 	private volatile FavoritesCache favoritesCache;
 	private final Map<Path, Object> inProcessFileLocks = new ConcurrentHashMap<>();
 
-	public PlaylistLoader(BotConfig config) {
+	public PlaylistLoader(BotConfig config)
+	{
 		this.config = config;
 	}
 
-	public PlaylistResult<Path> ensureStorageReady() {
+	public PlaylistResult<Path> ensureStorageReady()
+	{
 		return ensureStorageReady(true);
 	}
 
-	public PlaylistResult<Path> checkStorageReady() {
+	public PlaylistResult<Path> checkStorageReady()
+	{
 		return ensureStorageReady(false);
 	}
 
-	private PlaylistResult<Path> ensureStorageReady(boolean createIfMissing) {
+	private PlaylistResult<Path> ensureStorageReady(boolean createIfMissing)
+	{
 		String configuredPath = config.getPlaylistsFolder();
-		if (configuredPath == null || configuredPath.trim().isEmpty()) {
+		if (configuredPath == null || configuredPath.trim().isEmpty())
+		{
 			return rememberError(PlaylistErrorType.INVALID_CONFIG, "Playlists folder is not configured.",
 					configuredPath, null);
 		}
 
 		Path folderPath;
-		try {
+		try
+		{
 			folderPath = OtherUtil.getPath(configuredPath).toAbsolutePath().normalize();
-		} catch (Exception ex) {
+		} catch (Exception ex)
+		{
 			return rememberError(PlaylistErrorType.INVALID_CONFIG,
 					"Playlists folder path is invalid: " + ex.getMessage(), configuredPath, ex);
 		}
 
-		try {
-			if (createIfMissing) {
+		try
+		{
+			if (createIfMissing)
+			{
 				Files.createDirectories(folderPath);
-			} else if (!Files.exists(folderPath)) {
+			} else if (!Files.exists(folderPath))
+			{
 				return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 						"Playlists directory does not exist and could not be accessed.", configuredPath, null);
 			}
 
-			if (!Files.isDirectory(folderPath)) {
+			if (!Files.isDirectory(folderPath))
+			{
 				return rememberError(PlaylistErrorType.INVALID_CONFIG, "Configured playlists path is not a directory.",
 						configuredPath, null);
 			}
-			if (!Files.isReadable(folderPath) || !Files.isWritable(folderPath)) {
+			if (!Files.isReadable(folderPath) || !Files.isWritable(folderPath))
+			{
 				return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 						"Playlists directory is not readable and writable.", configuredPath, null);
 			}
 
 			lastStorageError = null;
 			return PlaylistResult.success(folderPath);
-		} catch (IOException ex) {
+		} catch (IOException ex)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 					"Failed to access playlists directory: " + ex.getMessage(), configuredPath, ex);
 		}
 	}
 
-	public PlaylistResult<List<String>> getPlaylistNamesResult() {
+	public PlaylistResult<List<String>> getPlaylistNamesResult()
+	{
 		PlaylistResult<Path> readiness = ensureStorageReady();
 		if (!readiness.isSuccess())
 			return PlaylistResult.failure(readiness.getError());
 
 		File folder = readiness.getValue().toFile();
 		File[] files = folder.listFiles((pathname) -> pathname.getName().endsWith(".txt"));
-		if (files == null) {
+		if (files == null)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE, "Failed to list playlists directory contents.",
 					config.getPlaylistsFolder(), null);
 		}
 
 		List<String> favoriteNames = new ArrayList<>(1);
 		List<String> otherNames = new ArrayList<>(files.length);
-		for (File file : files) {
+		for (File file : files)
+		{
 			String name = file.getName().substring(0, file.getName().length() - 4);
-			if (name.equalsIgnoreCase(FAVORITES_PLAYLIST_NAME)) {
+			if (name.equalsIgnoreCase(FAVORITES_PLAYLIST_NAME))
+			{
 				favoriteNames.add(name);
-			} else {
+			} else
+			{
 				otherNames.add(name);
 			}
 		}
@@ -275,140 +321,168 @@ public class PlaylistLoader {
 		return PlaylistResult.success(orderedNames);
 	}
 
-	public List<String> getPlaylistNames() {
+	public List<String> getPlaylistNames()
+	{
 		PlaylistResult<List<String>> result = getPlaylistNamesResult();
 		return result.isSuccess() ? result.getValue() : null;
 	}
 
-	public void createFolder() {
+	public void createFolder()
+	{
 		ensureStorageReady();
 	}
 
-	public boolean folderExists() {
+	public boolean folderExists()
+	{
 		String path = config.getPlaylistsFolder();
 		if (path == null || path.trim().isEmpty())
 			return false;
-		try {
+		try
+		{
 			return Files.isDirectory(OtherUtil.getPath(path));
-		} catch (Exception ex) {
+		} catch (Exception ex)
+		{
 			return false;
 		}
 	}
 
-	public void createPlaylist(String name) throws IOException {
+	public void createPlaylist(String name) throws IOException
+	{
 		PlaylistResult<Void> result = createPlaylistResult(name);
 		if (!result.isSuccess())
 			throw toIOException(result.getError());
 	}
 
-	public void deletePlaylist(String name) throws IOException {
+	public void deletePlaylist(String name) throws IOException
+	{
 		PlaylistResult<Void> result = deletePlaylistResult(name);
 		if (!result.isSuccess())
 			throw toIOException(result.getError());
 	}
 
-	public void writePlaylist(String name, String text) throws IOException {
+	public void writePlaylist(String name, String text) throws IOException
+	{
 		PlaylistResult<Void> result = writePlaylistResult(name, text);
 		if (!result.isSuccess())
 			throw toIOException(result.getError());
 	}
 
-	public PlaylistResult<Void> createPlaylistResult(String name) {
+	public PlaylistResult<Void> createPlaylistResult(String name)
+	{
 		PlaylistResult<Path> readiness = ensureStorageReady();
 		if (!readiness.isSuccess())
 			return PlaylistResult.failure(readiness.getError());
-		try {
+		try
+		{
 			Files.createFile(playlistPath(readiness.getValue(), name));
 			invalidateFavoritesCacheIfNeeded(name);
 			return PlaylistResult.success(null);
-		} catch (IOException ex) {
+		} catch (IOException ex)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 					"Failed to create playlist `" + name + "`: " + ex.getMessage(), config.getPlaylistsFolder(), ex);
 		}
 	}
 
-	public PlaylistResult<Void> deletePlaylistResult(String name) {
+	public PlaylistResult<Void> deletePlaylistResult(String name)
+	{
 		PlaylistResult<Path> readiness = ensureStorageReady();
 		if (!readiness.isSuccess())
 			return PlaylistResult.failure(readiness.getError());
 		Path path = playlistPath(readiness.getValue(), name);
-		if (!Files.exists(path)) {
+		if (!Files.exists(path))
+		{
 			return PlaylistResult.failure(new PlaylistError(PlaylistErrorType.PLAYLIST_NOT_FOUND,
 					"Playlist `" + name + "` does not exist.", config.getPlaylistsFolder(), null));
 		}
-		try {
+		try
+		{
 			Files.delete(path);
 			invalidateFavoritesCacheIfNeeded(name);
 			return PlaylistResult.success(null);
-		} catch (IOException ex) {
+		} catch (IOException ex)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 					"Failed to delete playlist `" + name + "`: " + ex.getMessage(), config.getPlaylistsFolder(), ex);
 		}
 	}
 
-	public PlaylistResult<Void> writePlaylistResult(String name, String text) {
+	public PlaylistResult<Void> writePlaylistResult(String name, String text)
+	{
 		PlaylistResult<Path> readiness = ensureStorageReady();
 		if (!readiness.isSuccess())
 			return PlaylistResult.failure(readiness.getError());
 
 		Path path = playlistPath(readiness.getValue(), name);
-		if (!Files.exists(path)) {
+		if (!Files.exists(path))
+		{
 			return PlaylistResult.failure(new PlaylistError(PlaylistErrorType.PLAYLIST_NOT_FOUND,
 					"Playlist `" + name + "` does not exist.", config.getPlaylistsFolder(), null));
 		}
-		try {
+		try
+		{
 			byte[] content = text.trim().getBytes(StandardCharsets.UTF_8);
 			Files.write(path, content);
 			refreshOrInvalidateFavoritesCacheAfterWrite(name, path, content);
 			return PlaylistResult.success(null);
-		} catch (IOException ex) {
+		} catch (IOException ex)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 					"Failed to write playlist `" + name + "`: " + ex.getMessage(), config.getPlaylistsFolder(), ex);
 		}
 	}
 
-	public Playlist getPlaylist(String name) {
+	public Playlist getPlaylist(String name)
+	{
 		PlaylistResult<Playlist> result = getPlaylistResult(name);
 		return result.isSuccess() ? result.getValue() : null;
 	}
 
-	public PlaylistResult<Playlist> getPlaylistResult(String name) {
+	public PlaylistResult<Playlist> getPlaylistResult(String name)
+	{
 		PlaylistResult<Path> readiness = ensureStorageReady();
 		if (!readiness.isSuccess())
 			return PlaylistResult.failure(readiness.getError());
 		Path path = playlistPath(readiness.getValue(), name);
-		if (!Files.exists(path)) {
+		if (!Files.exists(path))
+		{
 			return PlaylistResult.failure(new PlaylistError(PlaylistErrorType.PLAYLIST_NOT_FOUND,
 					"Playlist `" + name + "` does not exist.", config.getPlaylistsFolder(), null));
 		}
-		try {
+		try
+		{
 			ParsedPlaylist parsed = parsePlaylistLines(Files.readAllLines(path), true);
 			List<String> list = parsed.items;
 			boolean shuffle = parsed.shuffle;
 			if (shuffle)
 				shuffle(list);
 			return PlaylistResult.success(new Playlist(name, list, shuffle));
-		} catch (IOException e) {
+		} catch (IOException e)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 					"Failed to read playlist `" + name + "`: " + e.getMessage(), config.getPlaylistsFolder(), e);
 		}
 	}
 
-	public PlaylistResult<AppendIfAbsentResult> appendItemIfAbsentResult(String name, String item) {
+	public PlaylistResult<AppendIfAbsentResult> appendItemIfAbsentResult(String name, String item)
+	{
 		PlaylistResult<Path> readiness = ensureStorageReady();
 		if (!readiness.isSuccess())
 			return PlaylistResult.failure(readiness.getError());
 
 		String normalizedItem = item == null ? "" : item.trim();
-		if (normalizedItem.isEmpty()) {
+		if (normalizedItem.isEmpty())
+		{
 			return rememberError(PlaylistErrorType.INVALID_CONFIG, "Cannot append an empty playlist item.",
 					config.getPlaylistsFolder(), null);
 		}
 
 		Path path = playlistPath(readiness.getValue(), name);
 		boolean favoritesPlaylist = isFavoritesPlaylist(name);
-		try {
-			if (favoritesPlaylist && isFavoritesCacheHit(path, normalizedItem)) {
+		try
+		{
+			if (favoritesPlaylist && isFavoritesCacheHit(path, normalizedItem))
+			{
 				LOG.debug("Favorites append fast-path duplicate hit (pre-lock): entry={}", normalizedItem);
 				return PlaylistResult.success(AppendIfAbsentResult.alreadyPresent());
 			}
@@ -417,31 +491,39 @@ public class PlaylistLoader {
 			AppendIfAbsentResult operationResult;
 			Path lockKey = path.toAbsolutePath().normalize();
 			Object inProcessLock = inProcessFileLocks.computeIfAbsent(lockKey, ignored -> new Object());
-			synchronized (inProcessLock) {
+			synchronized (inProcessLock)
+			{
 				try (FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ,
-						StandardOpenOption.WRITE); FileLock lock = channel.lock()) {
-					if (!lock.isValid()) {
+						StandardOpenOption.WRITE); FileLock lock = channel.lock())
+				{
+					if (!lock.isValid())
+					{
 						throw new IOException("Failed to acquire a valid lock for playlist file.");
 					}
 
 					CacheAppendResult cacheAppendResult = favoritesPlaylist
 							? tryAppendWithFreshFavoritesCache(path, channel, normalizedItem)
 							: null;
-					if (cacheAppendResult != null) {
+					if (cacheAppendResult != null)
+					{
 						LOG.debug("Favorites append lock-path used warm cache: result={}, entry={}",
 								cacheAppendResult.result.getStatus(), normalizedItem);
 						itemsAfterOperation = cacheAppendResult.entries;
 						operationResult = cacheAppendResult.result;
-					} else {
-						if (favoritesPlaylist) {
+					} else
+					{
+						if (favoritesPlaylist)
+						{
 							LOG.debug(
 									"Favorites append cache unavailable/stale under lock; reading full file for authoritative check.");
 						}
 						Set<String> entries = readPlaylistItemsFromChannel(channel);
-						if (entries.contains(normalizedItem)) {
+						if (entries.contains(normalizedItem))
+						{
 							itemsAfterOperation = entries;
 							operationResult = AppendIfAbsentResult.alreadyPresent();
-						} else {
+						} else
+						{
 							appendLine(channel, normalizedItem);
 							entries.add(normalizedItem);
 							itemsAfterOperation = entries;
@@ -453,21 +535,25 @@ public class PlaylistLoader {
 			if (favoritesPlaylist)
 				refreshFavoritesCache(path, itemsAfterOperation);
 			return PlaylistResult.success(operationResult);
-		} catch (IOException ex) {
+		} catch (IOException ex)
+		{
 			return rememberError(PlaylistErrorType.STORAGE_UNAVAILABLE,
 					"Failed to append item to playlist `" + name + "`: " + ex.getMessage(), config.getPlaylistsFolder(),
 					ex);
 		}
 	}
 
-	public Optional<PlaylistError> getLastStorageError() {
+	public Optional<PlaylistError> getLastStorageError()
+	{
 		return Optional.ofNullable(lastStorageError);
 	}
 
 	private <T> PlaylistResult<T> rememberError(PlaylistErrorType type, String message, String configuredPath,
-			Throwable cause) {
+			Throwable cause)
+	{
 		PlaylistError error = PlaylistError.of(type, message, configuredPath, cause);
-		if (type != PlaylistErrorType.PLAYLIST_NOT_FOUND) {
+		if (type != PlaylistErrorType.PLAYLIST_NOT_FOUND)
+		{
 			lastStorageError = error;
 			if (cause == null)
 				LOG.warn("Playlist storage issue ({}): path={}, message={}", type, configuredPath, message);
@@ -478,14 +564,17 @@ public class PlaylistLoader {
 		return PlaylistResult.failure(error);
 	}
 
-	private Path playlistPath(Path folder, String name) {
+	private Path playlistPath(Path folder, String name)
+	{
 		return folder.resolve(name + ".txt");
 	}
 
-	private void appendLine(FileChannel channel, String value) throws IOException {
+	private void appendLine(FileChannel channel, String value) throws IOException
+	{
 		long size = channel.size();
 		channel.position(size);
-		if (size > 0) {
+		if (size > 0)
+		{
 			ByteBuffer last = ByteBuffer.allocate(1);
 			channel.position(size - 1);
 			channel.read(last);
@@ -500,17 +589,20 @@ public class PlaylistLoader {
 		channel.write(ByteBuffer.wrap(value.getBytes(StandardCharsets.UTF_8)));
 	}
 
-	private Set<String> readPlaylistItemsFromChannel(FileChannel channel) throws IOException {
+	private Set<String> readPlaylistItemsFromChannel(FileChannel channel) throws IOException
+	{
 		long size = channel.size();
 		if (size <= 0)
 			return new LinkedHashSet<>();
-		if (size > Integer.MAX_VALUE) {
+		if (size > Integer.MAX_VALUE)
+		{
 			throw new IOException("Playlist file is too large to process in memory: " + size + " bytes");
 		}
 
 		channel.position(0);
 		ByteBuffer bytes = ByteBuffer.allocate((int) size);
-		while (bytes.hasRemaining() && channel.read(bytes) != -1) {
+		while (bytes.hasRemaining() && channel.read(bytes) != -1)
+		{
 			// read until full buffer
 		}
 		bytes.flip();
@@ -521,21 +613,25 @@ public class PlaylistLoader {
 	}
 
 	private CacheAppendResult tryAppendWithFreshFavoritesCache(Path path, FileChannel channel, String item)
-			throws IOException {
+			throws IOException
+	{
 		FavoritesCache cacheSnapshot = favoritesCache;
-		if (cacheSnapshot == null) {
+		if (cacheSnapshot == null)
+		{
 			LOG.debug("Favorites append lock-path cache miss: no cache snapshot.");
 			return null;
 		}
 
 		FileSignature currentSignature = FileSignature.of(path);
-		if (!cacheSnapshot.signature.equals(currentSignature)) {
+		if (!cacheSnapshot.signature.equals(currentSignature))
+		{
 			LOG.debug("Favorites append lock-path cache stale: signature mismatch.");
 			return null;
 		}
 
 		Set<String> entries = new LinkedHashSet<>(cacheSnapshot.entries);
-		if (entries.contains(item)) {
+		if (entries.contains(item))
+		{
 			return new CacheAppendResult(entries, AppendIfAbsentResult.alreadyPresent());
 		}
 
@@ -544,7 +640,8 @@ public class PlaylistLoader {
 		return new CacheAppendResult(entries, AppendIfAbsentResult.appended());
 	}
 
-	private boolean isFavoritesCacheHit(Path favoritesPath, String item) throws IOException {
+	private boolean isFavoritesCacheHit(Path favoritesPath, String item) throws IOException
+	{
 		FavoritesCache cacheSnapshot = favoritesCache;
 		if (cacheSnapshot == null)
 			return false;
@@ -555,15 +652,19 @@ public class PlaylistLoader {
 		return cacheSnapshot.entries.contains(item);
 	}
 
-	private ParsedPlaylist parsePlaylistLines(List<String> rawLines, boolean includeShuffleDirective) {
+	private ParsedPlaylist parsePlaylistLines(List<String> rawLines, boolean includeShuffleDirective)
+	{
 		boolean shuffle = false;
 		List<String> items = new ArrayList<>();
-		for (String line : rawLines) {
+		for (String line : rawLines)
+		{
 			String value = line.trim();
 			if (value.isEmpty())
 				continue;
-			if (value.startsWith("#") || value.startsWith("//")) {
-				if (includeShuffleDirective) {
+			if (value.startsWith("#") || value.startsWith("//"))
+			{
+				if (includeShuffleDirective)
+				{
 					String compact = value.replaceAll("\\s+", "");
 					if (compact.equalsIgnoreCase("#shuffle") || compact.equalsIgnoreCase("//shuffle"))
 						shuffle = true;
@@ -575,8 +676,10 @@ public class PlaylistLoader {
 		return new ParsedPlaylist(items, shuffle);
 	}
 
-	private void refreshFavoritesCache(Path path, Set<String> entries) throws IOException {
-		if (!Files.exists(path)) {
+	private void refreshFavoritesCache(Path path, Set<String> entries) throws IOException
+	{
+		if (!Files.exists(path))
+		{
 			favoritesCache = new FavoritesCache(FileSignature.missing(), Collections.emptySet());
 			LOG.debug("Favorites cache refreshed to empty snapshot because favorites file is missing.");
 			return;
@@ -589,10 +692,12 @@ public class PlaylistLoader {
 	}
 
 	private void refreshOrInvalidateFavoritesCacheAfterWrite(String playlistName, Path path, byte[] content)
-			throws IOException {
+			throws IOException
+	{
 		if (!isFavoritesPlaylist(playlistName))
 			return;
-		if (content.length == 0) {
+		if (content.length == 0)
+		{
 			favoritesCache = new FavoritesCache(FileSignature.of(path), Collections.emptySet());
 			return;
 		}
@@ -602,45 +707,55 @@ public class PlaylistLoader {
 		refreshFavoritesCache(path, new LinkedHashSet<>(parsed.items));
 	}
 
-	private void invalidateFavoritesCacheIfNeeded(String playlistName) {
-		if (isFavoritesPlaylist(playlistName)) {
+	private void invalidateFavoritesCacheIfNeeded(String playlistName)
+	{
+		if (isFavoritesPlaylist(playlistName))
+		{
 			favoritesCache = null;
 			LOG.debug("Favorites cache invalidated due to playlist structural change: {}", playlistName);
 		}
 	}
 
-	private boolean isFavoritesPlaylist(String name) {
+	private boolean isFavoritesPlaylist(String name)
+	{
 		return FAVORITES_PLAYLIST_NAME.equalsIgnoreCase(name);
 	}
 
-	private static final class ParsedPlaylist {
+	private static final class ParsedPlaylist
+	{
 		private final List<String> items;
 		private final boolean shuffle;
 
-		private ParsedPlaylist(List<String> items, boolean shuffle) {
+		private ParsedPlaylist(List<String> items, boolean shuffle)
+		{
 			this.items = items;
 			this.shuffle = shuffle;
 		}
 	}
 
-	private static final class CacheAppendResult {
+	private static final class CacheAppendResult
+	{
 		private final Set<String> entries;
 		private final AppendIfAbsentResult result;
 
-		private CacheAppendResult(Set<String> entries, AppendIfAbsentResult result) {
+		private CacheAppendResult(Set<String> entries, AppendIfAbsentResult result)
+		{
 			this.entries = entries;
 			this.result = result;
 		}
 	}
 
-	private IOException toIOException(PlaylistError error) {
+	private IOException toIOException(PlaylistError error)
+	{
 		if (error.getCause() instanceof IOException ioEx)
 			return ioEx;
 		return new IOException(error.getMessage(), error.getCause());
 	}
 
-	private static <T> void shuffle(List<T> list) {
-		for (int first = 0; first < list.size(); first++) {
+	private static <T> void shuffle(List<T> list)
+	{
+		for (int first = 0; first < list.size(); first++)
+		{
 			int second = (int) (Math.random() * list.size());
 			T tmp = list.get(first);
 			list.set(first, list.get(second));
@@ -648,7 +763,8 @@ public class PlaylistLoader {
 		}
 	}
 
-	public class Playlist {
+	public class Playlist
+	{
 		private final String name;
 		private final List<String> items;
 		private final boolean shuffle;
@@ -656,27 +772,33 @@ public class PlaylistLoader {
 		private final List<PlaylistLoadError> errors = new LinkedList<>();
 		private boolean loaded = false;
 
-		private Playlist(String name, List<String> items, boolean shuffle) {
+		private Playlist(String name, List<String> items, boolean shuffle)
+		{
 			this.name = name;
 			this.items = items;
 			this.shuffle = shuffle;
 		}
 
-		public void loadTracks(AudioPlayerManager manager, Consumer<AudioTrack> consumer, Runnable callback) {
+		public void loadTracks(AudioPlayerManager manager, Consumer<AudioTrack> consumer, Runnable callback)
+		{
 			if (loaded)
 				return;
 			loaded = true;
-			if (items.isEmpty()) {
+			if (items.isEmpty())
+			{
 				if (callback != null)
 					callback.run();
 				return;
 			}
 			AtomicInteger pendingItems = new AtomicInteger(items.size());
-			for (int i = 0; i < items.size(); i++) {
+			for (int i = 0; i < items.size(); i++)
+			{
 				int index = i;
 				manager.loadItemOrdered(name, items.get(i), new AudioLoadResultHandler() {
-					private void done() {
-						if (pendingItems.decrementAndGet() == 0) {
+					private void done()
+					{
+						if (pendingItems.decrementAndGet() == 0)
+						{
 							if (shuffle)
 								shuffleTracks();
 							if (callback != null)
@@ -685,11 +807,13 @@ public class PlaylistLoader {
 					}
 
 					@Override
-					public void trackLoaded(AudioTrack at) {
+					public void trackLoaded(AudioTrack at)
+					{
 						if (config.isTooLong(at))
 							errors.add(new PlaylistLoadError(index, items.get(index),
 									"This track is longer than the allowed maximum"));
-						else {
+						else
+						{
 							at.setUserData(0L);
 							tracks.add(at);
 							consumer.accept(at);
@@ -698,15 +822,20 @@ public class PlaylistLoader {
 					}
 
 					@Override
-					public void playlistLoaded(AudioPlaylist ap) {
-						if (ap.isSearchResult()) {
+					public void playlistLoaded(AudioPlaylist ap)
+					{
+						if (ap.isSearchResult())
+						{
 							trackLoaded(ap.getTracks().get(0));
-						} else if (ap.getSelectedTrack() != null) {
+						} else if (ap.getSelectedTrack() != null)
+						{
 							trackLoaded(ap.getSelectedTrack());
-						} else {
+						} else
+						{
 							List<AudioTrack> loaded = new ArrayList<>(ap.getTracks());
 							if (shuffle)
-								for (int first = 0; first < loaded.size(); first++) {
+								for (int first = 0; first < loaded.size(); first++)
+								{
 									int second = (int) (Math.random() * loaded.size());
 									AudioTrack tmp = loaded.get(first);
 									loaded.set(first, loaded.get(second));
@@ -721,13 +850,15 @@ public class PlaylistLoader {
 					}
 
 					@Override
-					public void noMatches() {
+					public void noMatches()
+					{
 						errors.add(new PlaylistLoadError(index, items.get(index), "No matches found."));
 						done();
 					}
 
 					@Override
-					public void loadFailed(FriendlyException fe) {
+					public void loadFailed(FriendlyException fe)
+					{
 						errors.add(new PlaylistLoadError(index, items.get(index),
 								"Failed to load track: " + fe.getLocalizedMessage()));
 						done();
@@ -736,47 +867,57 @@ public class PlaylistLoader {
 			}
 		}
 
-		public void shuffleTracks() {
+		public void shuffleTracks()
+		{
 			shuffle(tracks);
 		}
 
-		public String getName() {
+		public String getName()
+		{
 			return name;
 		}
 
-		public List<String> getItems() {
+		public List<String> getItems()
+		{
 			return items;
 		}
 
-		public List<AudioTrack> getTracks() {
+		public List<AudioTrack> getTracks()
+		{
 			return tracks;
 		}
 
-		public List<PlaylistLoadError> getErrors() {
+		public List<PlaylistLoadError> getErrors()
+		{
 			return errors;
 		}
 	}
 
-	public class PlaylistLoadError {
+	public class PlaylistLoadError
+	{
 		private final int number;
 		private final String item;
 		private final String reason;
 
-		private PlaylistLoadError(int number, String item, String reason) {
+		private PlaylistLoadError(int number, String item, String reason)
+		{
 			this.number = number;
 			this.item = item;
 			this.reason = reason;
 		}
 
-		public int getIndex() {
+		public int getIndex()
+		{
 			return number;
 		}
 
-		public String getItem() {
+		public String getItem()
+		{
 			return item;
 		}
 
-		public String getReason() {
+		public String getReason()
+		{
 			return reason;
 		}
 	}
