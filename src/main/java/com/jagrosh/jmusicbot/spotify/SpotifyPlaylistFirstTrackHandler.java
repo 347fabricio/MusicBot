@@ -9,15 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jagrosh.jmusicbot.Bot;
-import com.jagrosh.jmusicbot.audio.AudioHandler;
-import com.jagrosh.jmusicbot.audio.QueuedTrack;
-import com.jagrosh.jmusicbot.audio.RequestMetadata;
-import com.jagrosh.jmusicbot.service.AudioLoadResultHandlers;
 import com.jagrosh.jmusicbot.service.MusicService;
 import com.jagrosh.jmusicbot.service.MusicService.OutputAdapter;
 import com.jagrosh.jmusicbot.spotify.SpotifyBridge.SpotifyResult;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
-import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
@@ -28,17 +23,18 @@ import net.dv8tion.jda.api.components.buttons.Button;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 
-public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler {
+public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler
+{
 	private final Bot bot;
 	private final Guild guild;
 	private final Member member;
 	private final TextChannel channel;
 	private final OutputAdapter output;
 	private final SpotifyResult result;
-	private final String query;
 
 	private final String successEmoji;
 	private final String warningEmoji;
@@ -49,14 +45,14 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 	private static final Logger LOG = LoggerFactory.getLogger(MusicService.class);
 
 	public SpotifyPlaylistFirstTrackHandler(Bot bot, Guild guild, Member member, TextChannel channel,
-			OutputAdapter output, SpotifyBridge.SpotifyResult result, String query, MusicService musicService) {
+			OutputAdapter output, SpotifyBridge.SpotifyResult result, MusicService musicService)
+	{
 		this.bot = bot;
 		this.guild = guild;
 		this.member = member;
 		this.channel = channel;
 		this.output = output;
 		this.result = result;
-		this.query = query;
 		this.musicService = musicService;
 
 		this.successEmoji = bot.getConfig().getSuccess();
@@ -65,31 +61,39 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 	}
 
 	@Override
-	public void trackLoaded(AudioTrack track) {
+	public void trackLoaded(AudioTrack track)
+	{
 		processFirstTrack(track);
 	}
 
 	@Override
-	public void playlistLoaded(AudioPlaylist playlist) {
-		if (!playlist.getTracks().isEmpty()) {
+	public void playlistLoaded(AudioPlaylist playlist)
+	{
+		if (!playlist.getTracks().isEmpty())
+		{
 			processFirstTrack(playlist.getTracks().get(0));
-		} else {
+		} else
+		{
 			noMatches();
 		}
 	}
 
 	@Override
-	public void noMatches() {
+	public void noMatches()
+	{
 		channel.sendMessage(warningEmoji + " No results found for the first track.").queue();
 	}
 
 	@Override
-	public void loadFailed(FriendlyException exception) {
+	public void loadFailed(FriendlyException exception)
+	{
 		channel.sendMessage(errorEmoji + " Error loading first track.").queue();
 	}
 
-	private void processFirstTrack(AudioTrack track) {
-		if (musicService.isTooLong(track)) {
+	private void processFirstTrack(AudioTrack track)
+	{
+		if (musicService.isTooLong(track))
+		{
 			channel.sendMessage(FormatUtil.filter(warningEmoji + " Track too long.")).queue();
 			return;
 		}
@@ -100,8 +104,8 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 				+ "\t*Do you still want to load it?*";
 
 		List<Button> buttons = new ArrayList<>();
-		buttons.add(Button.success("load_playlist", "📥 Load Full Playlist"));
-		buttons.add(Button.danger("cancel_playlist", "🚫 Cancel"));
+		buttons.add(Button.success("load_playlist", Emoji.fromUnicode("\uD83D\uDCE5")).withLabel("Load Playlist"));
+		buttons.add(Button.danger("cancel_playlist", Emoji.fromUnicode("\uD83D\uDEAB")).withLabel("Cancel"));
 
 		StringBuilder sb = new StringBuilder("");
 		sb.append(promptMsg);
@@ -116,13 +120,15 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler 
 				bot.getWaiter().waitForEvent(ButtonInteractionEvent.class,
 						e -> e.getMessageId().equals(msg.getId()) && e.getUser().getIdLong() == member.getIdLong(),
 						e -> {
-							if (e.getComponentId().equals("cancel_playlist")) {
+							if (e.getComponentId().equals("cancel_playlist"))
+							{
 								e.editMessage(promptMsg).setComponents().queue();
 								LOG.info("Spotify playlist loading canceled by user: guild={}, user={}", guild.getId(),
 										member.getUser().getName());
 								return;
 							}
-							if (e.getComponentId().equals("load_playlist")) {
+							if (e.getComponentId().equals("load_playlist"))
+							{
 								e.deferEdit().queue(hook -> {
 									hook.editOriginal("🔄 Loading " + result.tracks.size() + " Spotify tracks.")
 											.setComponents(Collections.emptyList())

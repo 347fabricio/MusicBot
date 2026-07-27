@@ -7,12 +7,15 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SpotifyTrackMatcher {
+public class SpotifyTrackMatcher
+{
 	private static final Logger LOG = LoggerFactory.getLogger(MusicService.class);
 
 	public static AudioTrack selectBestMatch(List<AudioTrack> youtubeResults, String spotifyTitle, String spotifyArtist,
-			Integer spotifyDurationMs) {
-		if (youtubeResults == null || youtubeResults.isEmpty()) {
+			Integer spotifyDurationMs)
+	{
+		if (youtubeResults == null || youtubeResults.isEmpty())
+		{
 			return null;
 		}
 
@@ -22,7 +25,8 @@ public class SpotifyTrackMatcher {
 
 		AudioTrack fallbackMatch = null;
 
-		for (AudioTrack track : youtubeResults) {
+		for (AudioTrack track : youtubeResults)
+		{
 			String ytTitle = track.getInfo().title.toLowerCase();
 			String ytChannel = track.getInfo().author.toLowerCase();
 			String ytFullText = ytChannel + " " + ytTitle;
@@ -35,13 +39,17 @@ public class SpotifyTrackMatcher {
 			boolean isOfficialChannel = ytArtist.contains(spArtist) || ytChannel.contains("vevo")
 					|| ytChannel.contains("- topic");
 
-			if (isOfficialChannel && ytTitle.contains(spTitle)) {
+			if (isOfficialChannel && ytTitle.contains(spTitle))
+			{
 				LOG.info("[Perfect Match] ytTitle: \"{}\" | ytCh: \"{}\"", ytTitle, ytArtist);
 				return track;
-			} else if (containsArtist && containsTitle) {
-				if (spDurationMs != null && spDurationMs > 0) {
+			} else if (containsArtist && containsTitle)
+			{
+				if (spDurationMs != null && spDurationMs > 0)
+				{
 					long maxAllowedDuration = (long) (spDurationMs * 1.30);
-					if (track.getDuration() > maxAllowedDuration) {
+					if (track.getDuration() > maxAllowedDuration)
+					{
 						LOG.warn(
 								"[Duration Reject] Track exceeded 30% limit. ytDuration: {}ms | spDuration: {}ms | ytTitle: \"{}\" | ytCh: \"{}\"",
 								track.getDuration(), spDurationMs, ytTitle, ytChannel);
@@ -50,18 +58,21 @@ public class SpotifyTrackMatcher {
 				}
 
 				if (ytFullText.contains("official") || ytFullText.contains("audio") || ytFullText.contains("áudio")
-						|| ytFullText.contains("remaster") || ytFullText.contains("remastered")) {
+						|| ytFullText.contains("remaster") || ytFullText.contains("remastered"))
+				{
 					LOG.info("[Official/Remastered Audio Match] ytTitle: \"{}\" | ytCh: \"{}\"", ytTitle, ytArtist);
 					return track;
 				}
 
-				if (fallbackMatch == null) {
+				if (fallbackMatch == null)
+				{
 					fallbackMatch = track;
 				}
 			}
 		}
 
-		if (fallbackMatch != null) {
+		if (fallbackMatch != null)
+		{
 			LOG.info("[Fallback Match] ytTitle: \"{}\" | ytCh: \"{}\"", fallbackMatch.getInfo().title,
 					fallbackMatch.getInfo().author);
 			return fallbackMatch;
@@ -73,8 +84,10 @@ public class SpotifyTrackMatcher {
 		return emergencyMatch;
 	}
 
-	private static String isolateArtistName(String ytAuthor) {
-		if (ytAuthor == null || ytAuthor.isEmpty()) {
+	private static String isolateArtistName(String ytAuthor)
+	{
+		if (ytAuthor == null || ytAuthor.isEmpty())
+		{
 			return "";
 		}
 		String rawArtist = ytAuthor.split(" - |/")[0];

@@ -49,10 +49,12 @@ import java.util.concurrent.TimeUnit;
  * Audio load result handlers for processing track/playlist loading results.
  * These handlers are used by MusicService for play and playNext operations.
  */
-public final class AudioLoadResultHandlers {
+public final class AudioLoadResultHandlers
+{
 	private static final Logger LOG = LoggerFactory.getLogger(AudioLoadResultHandlers.class);
 
-	private AudioLoadResultHandlers() {
+	private AudioLoadResultHandlers()
+	{
 		// Utility class - prevent instantiation
 	}
 
@@ -60,7 +62,8 @@ public final class AudioLoadResultHandlers {
 	 * Base class for audio load result handlers with shared fields and common
 	 * logic.
 	 */
-	public static abstract class BaseResultHandler implements AudioLoadResultHandler {
+	public static abstract class BaseResultHandler implements AudioLoadResultHandler
+	{
 		protected final MusicService musicService;
 		protected final Bot bot;
 		protected final MusicService.OutputAdapter output;
@@ -71,7 +74,8 @@ public final class AudioLoadResultHandlers {
 		protected final TextChannel channel;
 
 		protected BaseResultHandler(MusicService musicService, Bot bot, MusicService.OutputAdapter output, Guild guild,
-				Member member, String args, boolean ytsearch, TextChannel channel) {
+				Member member, String args, boolean ytsearch, TextChannel channel)
+		{
 			this.musicService = musicService;
 			this.bot = bot;
 			this.output = output;
@@ -93,12 +97,15 @@ public final class AudioLoadResultHandlers {
 		protected abstract String getHandlerName();
 
 		@Override
-		public void noMatches() {
-			if (ytsearch) {
+		public void noMatches()
+		{
+			if (ytsearch)
+			{
 				LOG.debug("{} no matches found: guild={}, query=\"{}\"", getHandlerName(), guild.getId(), args);
 				output.editMessage(
 						FormatUtil.filter(bot.getConfig().getWarning() + " No results found for `" + args + "`."));
-			} else {
+			} else
+			{
 				LOG.debug("{} falling back to YouTube search: guild={}, query=\"{}\"", getHandlerName(), guild.getId(),
 						args);
 				bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + args,
@@ -107,12 +114,15 @@ public final class AudioLoadResultHandlers {
 		}
 
 		@Override
-		public void loadFailed(FriendlyException throwable) {
-			if (throwable.severity == Severity.COMMON) {
+		public void loadFailed(FriendlyException throwable)
+		{
+			if (throwable.severity == Severity.COMMON)
+			{
 				LOG.warn("{} load failed (common): guild={}, query=\"{}\", error={}", getHandlerName(), guild.getId(),
 						args, throwable.getMessage());
 				output.editMessage(bot.getConfig().getError() + " Error loading: " + throwable.getMessage());
-			} else {
+			} else
+			{
 				LOG.error("{} load failed (severe): guild={}, query=\"{}\"", getHandlerName(), guild.getId(), args,
 						throwable);
 				output.editMessage(bot.getConfig().getError() + " Error loading track.");
@@ -124,42 +134,51 @@ public final class AudioLoadResultHandlers {
 	 * Result handler for standard play command that adds tracks to the end of the
 	 * queue.
 	 */
-	public static class PlayResultHandler extends BaseResultHandler {
+	public static class PlayResultHandler extends BaseResultHandler
+	{
 		private static final String LOAD = "\uD83D\uDCE5"; // 📥
 		private static final String CANCEL = "\uD83D\uDEAB"; // 🚫
 
 		public PlayResultHandler(MusicService musicService, Bot bot, MusicService.OutputAdapter output, Guild guild,
-				Member member, String args, boolean ytsearch, TextChannel channel) {
+				Member member, String args, boolean ytsearch, TextChannel channel)
+		{
 			super(musicService, bot, output, guild, member, args, ytsearch, channel);
 		}
 
 		@Override
-		protected BaseResultHandler createFallbackHandler() {
+		protected BaseResultHandler createFallbackHandler()
+		{
 			return new PlayResultHandler(musicService, bot, output, guild, member, args, true, channel);
 		}
 
 		@Override
-		protected String getHandlerName() {
+		protected String getHandlerName()
+		{
 			return "Track";
 		}
 
-		private void loadSingle(AudioTrack track, AudioPlaylist playlist) {
+		private void loadSingle(AudioTrack track, AudioPlaylist playlist)
+		{
 			MusicService.TrackAddResult result = musicService.addTrackToQueue(guild, member, track, args, channel);
-			if (result == null) {
+			if (result == null)
+			{
 				output.editMessage(
 						FormatUtil.filter(bot.getConfig().getWarning() + " " + musicService.formatTooLongError(track)));
 				return;
 			}
 
 			String addMsg = FormatUtil.filter(bot.getConfig().getSuccess() + " " + result.formattedMessage);
-			if (playlist == null || !guild.getSelfMember().hasPermission(channel, Permission.MESSAGE_ADD_REACTION)) {
+			if (playlist == null || !guild.getSelfMember().hasPermission(channel, Permission.MESSAGE_ADD_REACTION))
+			{
 				output.editMessage(addMsg);
-			} else {
+			} else
+			{
 				promptForPlaylistLoad(track, playlist, addMsg);
 			}
 		}
 
-		private void promptForPlaylistLoad(AudioTrack track, AudioPlaylist playlist, String addMsg) {
+		private void promptForPlaylistLoad(AudioTrack track, AudioPlaylist playlist, String addMsg)
+		{
 			String promptMsg = addMsg + "\n" + bot.getConfig().getWarning() + " This track has a playlist of **"
 					+ playlist.getTracks().size() + "** tracks attached. Select " + LOAD + " to load playlist.";
 
@@ -176,11 +195,13 @@ public final class AudioLoadResultHandlers {
 											|| event.getComponentId().equals("cancel_playlist"))
 									&& event.getUser().getIdLong() == member.getIdLong(),
 							event -> {
-								if (event.getComponentId().equals("load_playlist")) {
+								if (event.getComponentId().equals("load_playlist"))
+								{
 									int loaded = loadPlaylist(playlist, track);
 									event.editMessage(addMsg + "\n" + bot.getConfig().getSuccess() + " Loaded **"
 											+ loaded + "** additional tracks!").setComponents().queue();
-								} else {
+								} else
+								{
 									event.editMessage(addMsg).setComponents().queue();
 								}
 							}, 20, TimeUnit.SECONDS, () -> msg.editMessage(addMsg).setComponents().queue());
@@ -188,11 +209,13 @@ public final class AudioLoadResultHandlers {
 			});
 		}
 
-		private int loadPlaylist(AudioPlaylist playlist, AudioTrack exclude) {
+		private int loadPlaylist(AudioPlaylist playlist, AudioTrack exclude)
+		{
 			int[] count = { 0 };
 			AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
 			playlist.getTracks().forEach((track) -> {
-				if (!musicService.isTooLong(track) && !track.equals(exclude)) {
+				if (!musicService.isTooLong(track) && !track.equals(exclude))
+				{
 					handler.setLastReason(member.getUser().getName() + " added a playlist.");
 					handler.addTrack(new QueuedTrack(track, new RequestMetadata(member.getUser(),
 							new RequestMetadata.RequestInfo(args, track.getInfo().uri), channel.getIdLong())));
@@ -203,31 +226,37 @@ public final class AudioLoadResultHandlers {
 		}
 
 		@Override
-		public void trackLoaded(AudioTrack track) {
+		public void trackLoaded(AudioTrack track)
+		{
 			LOG.debug("Track loaded: guild={}, track=\"{}\"", guild.getId(), track.getInfo().title);
 			loadSingle(track, null);
 		}
 
 		@Override
-		public void playlistLoaded(AudioPlaylist playlist) {
+		public void playlistLoaded(AudioPlaylist playlist)
+		{
 			LOG.debug("Playlist loaded: guild={}, name=\"{}\", tracks={}", guild.getId(), playlist.getName(),
 					playlist.getTracks().size());
 
-			if (playlist.getTracks().size() > 1 && playlist.isSearchResult()) {
+			if (playlist.getTracks().size() > 1 && playlist.isSearchResult())
+			{
 				List<AudioTrack> tracks = playlist.getTracks();
 				int limit = Math.min(3, tracks.size());
 				List<AudioTrack> topTracks = tracks.subList(0, limit);
 				displayTrackSelection(topTracks, playlist);
-			} else if (playlist.getSelectedTrack() != null) {
+			} else if (playlist.getSelectedTrack() != null)
+			{
 				AudioTrack single = playlist.getSelectedTrack();
 				loadSingle(single, playlist);
-			} else {
+			} else
+			{
 				int count = loadPlaylist(playlist, null);
 				handlePlaylistLoadResult(playlist, count);
 			}
 		}
 
-		private void displayTrackSelection(List<AudioTrack> topTracks, AudioPlaylist playlist) {
+		private void displayTrackSelection(List<AudioTrack> topTracks, AudioPlaylist playlist)
+		{
 			List<Button> buttons = new ArrayList<>();
 
 			for (int i = 0; i < topTracks.size(); i++)
@@ -235,7 +264,7 @@ public final class AudioLoadResultHandlers {
 
 			EmbedBuilder selectionEmbed = EmbedFactory.createMultiTrackEmbed(topTracks);
 
-			buttons.add(Button.danger("cancel", "🚫 Cancel"));
+			buttons.add(Button.danger("cancel", Emoji.fromUnicode(CANCEL)).withLabel("Cancel"));
 
 			MessageEditBuilder editBuilder = new MessageEditBuilder().setEmbeds(selectionEmbed.build())
 					.setComponents(ActionRow.of(buttons));
@@ -245,7 +274,8 @@ public final class AudioLoadResultHandlers {
 					bot.getWaiter().waitForEvent(ButtonInteractionEvent.class,
 							e -> e.getMessageId().equals(msg.getId()) && e.getUser().getIdLong() == member.getIdLong(),
 							e -> {
-								if (e.getComponentId().equals("cancel")) {
+								if (e.getComponentId().equals("cancel"))
+								{
 									msg.delete().queue();
 									return;
 								}
@@ -274,16 +304,20 @@ public final class AudioLoadResultHandlers {
 			});
 		}
 
-		public class EmbedFactory {
-			public static EmbedBuilder createMultiTrackEmbed(List<AudioTrack> tracks) {
+		public class EmbedFactory
+		{
+			public static EmbedBuilder createMultiTrackEmbed(List<AudioTrack> tracks)
+			{
 				EmbedBuilder builder = new EmbedBuilder().setColor(Color.decode("#070707"))
 						.setTitle("🎵 Track Selection");
 
-				if (!tracks.isEmpty() && tracks.get(0).getInfo().artworkUrl != null) {
+				if (!tracks.isEmpty() && tracks.get(0).getInfo().artworkUrl != null)
+				{
 					builder.setThumbnail(tracks.get(0).getInfo().artworkUrl);
 				}
 
-				for (int i = 0; i < tracks.size(); i++) {
+				for (int i = 0; i < tracks.size(); i++)
+				{
 					AudioTrack track = tracks.get(i);
 
 					String safeTitle = TrackUtil.getFormattedTitle(track.getInfo().title);
@@ -299,15 +333,19 @@ public final class AudioLoadResultHandlers {
 			}
 		}
 
-		public class TrackUtil {
-			public static String getFormattedTitle(String title) {
-				if (title == null) {
+		public class TrackUtil
+		{
+			public static String getFormattedTitle(String title)
+			{
+				if (title == null)
+				{
 					return "Unknown Title";
 				}
 
 				String trimmedTitle = title.trim().replaceAll("[\\[\\]]", "");
 				int maxLength = 50; // title + " " + (1:00:00)
-				if (trimmedTitle.length() > maxLength) {
+				if (trimmedTitle.length() > maxLength)
+				{
 					return trimmedTitle.substring(0, maxLength) + "...";
 				}
 
@@ -315,19 +353,23 @@ public final class AudioLoadResultHandlers {
 			}
 		}
 
-		private void handlePlaylistLoadResult(AudioPlaylist playlist, int count) {
-			if (playlist.getTracks().size() == 0) {
+		private void handlePlaylistLoadResult(AudioPlaylist playlist, int count)
+		{
+			if (playlist.getTracks().size() == 0)
+			{
 				LOG.warn("Playlist empty or could not be loaded: guild={}, name=\"{}\"", guild.getId(),
 						playlist.getName());
 				output.editMessage(FormatUtil.filter(bot.getConfig().getWarning() + " The playlist "
 						+ (playlist.getName() == null ? "" : "(**" + playlist.getName() + "**) ")
 						+ " could not be loaded or contained 0 entries"));
-			} else if (count == 0) {
+			} else if (count == 0)
+			{
 				LOG.warn("All playlist tracks too long: guild={}, name=\"{}\"", guild.getId(), playlist.getName());
 				output.editMessage(FormatUtil.filter(bot.getConfig().getWarning() + " All entries in this playlist "
 						+ (playlist.getName() == null ? "" : "(**" + playlist.getName() + "**) ")
 						+ "were longer than the allowed maximum (`" + bot.getConfig().getMaxTime() + "`)"));
-			} else {
+			} else
+			{
 				LOG.info("Playlist added to queue: guild={}, name=\"{}\", tracksAdded={}/{}", guild.getId(),
 						playlist.getName(), count, playlist.getTracks().size());
 				output.editMessage(
@@ -346,27 +388,33 @@ public final class AudioLoadResultHandlers {
 	 * Result handler for playNext command that adds tracks to the front of the
 	 * queue.
 	 */
-	public static class PlayNextResultHandler extends BaseResultHandler {
+	public static class PlayNextResultHandler extends BaseResultHandler
+	{
 		public PlayNextResultHandler(MusicService musicService, Bot bot, MusicService.OutputAdapter output, Guild guild,
-				Member member, String args, boolean ytsearch, TextChannel channel) {
+				Member member, String args, boolean ytsearch, TextChannel channel)
+		{
 			super(musicService, bot, output, guild, member, args, ytsearch, channel);
 		}
 
 		@Override
-		protected BaseResultHandler createFallbackHandler() {
+		protected BaseResultHandler createFallbackHandler()
+		{
 			return new PlayNextResultHandler(musicService, bot, output, guild, member, args, true, channel);
 		}
 
 		@Override
-		protected String getHandlerName() {
+		protected String getHandlerName()
+		{
 			return "PlayNext";
 		}
 
-		private void loadSingle(AudioTrack track) {
+		private void loadSingle(AudioTrack track)
+		{
 			LOG.debug("PlayNext loading track: guild={}, track=\"{}\"", guild.getId(), track.getInfo().title);
 
 			MusicService.TrackAddResult result = musicService.addTrackToFront(guild, member, track, args, channel);
-			if (result == null) {
+			if (result == null)
+			{
 				output.editMessage(
 						FormatUtil.filter(bot.getConfig().getWarning() + " " + musicService.formatTooLongError(track)));
 				return;
@@ -376,23 +424,28 @@ public final class AudioLoadResultHandlers {
 		}
 
 		@Override
-		public void trackLoaded(AudioTrack track) {
+		public void trackLoaded(AudioTrack track)
+		{
 			LOG.debug("PlayNext track loaded: guild={}, track=\"{}\"", guild.getId(), track.getInfo().title);
 			loadSingle(track);
 		}
 
 		@Override
-		public void playlistLoaded(AudioPlaylist playlist) {
+		public void playlistLoaded(AudioPlaylist playlist)
+		{
 			LOG.debug("PlayNext playlist loaded (selecting single): guild={}, name=\"{}\", tracks={}", guild.getId(),
 					playlist.getName(), playlist.getTracks().size());
 
 			AudioTrack single;
-			if (playlist.getTracks().size() == 1 || playlist.isSearchResult()) {
+			if (playlist.getTracks().size() == 1 || playlist.isSearchResult())
+			{
 				single = playlist.getSelectedTrack() == null ? playlist.getTracks().get(0)
 						: playlist.getSelectedTrack();
-			} else if (playlist.getSelectedTrack() != null) {
+			} else if (playlist.getSelectedTrack() != null)
+			{
 				single = playlist.getSelectedTrack();
-			} else {
+			} else
+			{
 				single = playlist.getTracks().get(0);
 			}
 			loadSingle(single);
