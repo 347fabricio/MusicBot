@@ -29,7 +29,7 @@ import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.Settings;
 import com.jagrosh.jmusicbot.spotify.SpotifyBridge;
 import com.jagrosh.jmusicbot.spotify.SpotifyParser;
-import com.jagrosh.jmusicbot.spotify.SpotifyPlaylistFirstTrackHandler;
+import com.jagrosh.jmusicbot.spotify.SpotifyPlaylistPromptHandler;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
@@ -318,7 +318,7 @@ public class MusicService
 				if (result.tracks.size() > 1)
 				{
 					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
-							bot.getAudioLoadWrapper().wrap(query, new SpotifyPlaylistFirstTrackHandler(bot, guild,
+							bot.getAudioLoadWrapper().wrap(query, new SpotifyPlaylistPromptHandler(bot, guild,
 									member, channel, output, result, this)));
 					return;
 				} else

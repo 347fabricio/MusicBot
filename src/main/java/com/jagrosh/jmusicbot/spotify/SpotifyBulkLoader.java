@@ -25,7 +25,7 @@ import net.dv8tion.jda.api.interactions.InteractionHook;
 
 public class SpotifyBulkLoader
 {
-	private static final Logger LOG = LoggerFactory.getLogger(MusicService.class);
+	private static final Logger LOG = LoggerFactory.getLogger(SpotifyBulkLoader.class);
 
 	public static void loadPlaylist(Bot bot, Guild guild, Member member, TextChannel channel,
 			SpotifyBridge.SpotifyResult result, MusicService musicService, InteractionHook hook, String successEmoji)
@@ -161,12 +161,12 @@ public class SpotifyBulkLoader
 										{
 											if (t == null)
 											{
-												LOG.warn("[PlaylistLoader] Null track discarded for search: \"{}\"",
+												LOG.warn("Null track discarded for search: \"{}\"",
 														trackQuery);
 											} else if (musicService.isTooLong(t))
 											{
 												LOG.warn(
-														"[PlaylistLoader] Track exceeded maximum duration ({}) and was discarded: \"{}\"",
+														"Track exceeded maximum duration ({}) and was discarded: \"{}\"",
 														t.getDuration(), t.getInfo().title);
 											} else
 											{
@@ -188,6 +188,7 @@ public class SpotifyBulkLoader
 												hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
 														+ " Loaded **" + loadedCount.get() + "** additional tracks!")
 														.setComponents(Collections.emptyList()).queue();
+												SpotifyTrackMatcher.logMatchingStatistics();
 											}
 										}
 									}));

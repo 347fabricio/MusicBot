@@ -7,9 +7,13 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SpotifyBridge
 {
+	private static final Logger LOG = LoggerFactory.getLogger(SpotifyBridge.class);
+
 	public static class SpotifyResult
 	{
 		public List<String> tracks;
@@ -44,7 +48,7 @@ public class SpotifyBridge
 
 			if (exitCode != 0)
 			{
-				System.err.println("[SpotifyBridge] Python failed with exit code " + exitCode + ": " + jsonRes);
+				LOG.error("Python failed with exit code {}: {}", exitCode, jsonRes);
 				return new SpotifyResult(null, null, null, false);
 			}
 
@@ -56,7 +60,7 @@ public class SpotifyBridge
 				if (root.has("success") && !root.get("success").asBoolean())
 				{
 					String errorMsg = root.has("error") ? root.get("error").asText() : "Python unknown error";
-					System.err.println("[SpotifyBridge] Python failed: " + errorMsg);
+					LOG.error("Python script failed: {}", errorMsg);
 					return new SpotifyResult(null, null, null, false);
 				}
 
@@ -84,7 +88,7 @@ public class SpotifyBridge
 			}
 		} catch (Exception e)
 		{
-			System.err.println("[SpotifyBridge] Exception when executing Python script: " + e.getMessage());
+			LOG.error("Exception when executing Python script: {}", e.getMessage(), e);
 			e.printStackTrace();
 		}
 		return new SpotifyResult(null, null, null, false);

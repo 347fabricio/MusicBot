@@ -27,7 +27,7 @@ import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 
-public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler
+public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 {
 	private final Bot bot;
 	private final Guild guild;
@@ -42,9 +42,9 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler
 
 	private final MusicService musicService;
 
-	private static final Logger LOG = LoggerFactory.getLogger(MusicService.class);
+	private static final Logger LOG = LoggerFactory.getLogger(SpotifyPlaylistPromptHandler.class);
 
-	public SpotifyPlaylistFirstTrackHandler(Bot bot, Guild guild, Member member, TextChannel channel,
+	public SpotifyPlaylistPromptHandler(Bot bot, Guild guild, Member member, TextChannel channel,
 			OutputAdapter output, SpotifyBridge.SpotifyResult result, MusicService musicService)
 	{
 		this.bot = bot;
@@ -112,8 +112,8 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler
 		MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(sb.toString())
 				.setComponents(ActionRow.of(buttons));
 
-		LOG.info("Loading spotify playlist prompt: guild={}, user={}, total_tracks={}", guild.getId(),
-				member.getUser().getName(), result.tracks.size());
+		LOG.info("Action: PROMPT_CREATED | GuildId: {} | User: {} ({}) | TotalTracks: {}", guild.getId(),
+				member.getUser().getName(), member.getUser().getId(), result.tracks.size());
 
 		output.editMessage(sb.toString(), m -> {
 			m.editMessage(editBuilder.build()).queue(msg -> {
@@ -123,8 +123,8 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler
 							if (e.getComponentId().equals("cancel_playlist"))
 							{
 								e.editMessage(promptMsg).setComponents().queue();
-								LOG.info("Spotify playlist loading canceled by user: guild={}, user={}", guild.getId(),
-										member.getUser().getName());
+								LOG.info("Action: CANCELLED | GuildId: {} | User: {} ({})", guild.getId(),
+										member.getUser().getName(), member.getUser().getId());
 								return;
 							}
 							if (e.getComponentId().equals("load_playlist"))
@@ -135,14 +135,14 @@ public class SpotifyPlaylistFirstTrackHandler implements AudioLoadResultHandler
 											.queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
 													channel, result, musicService, hook, successEmoji));
 								});
-								LOG.info(
-										"Spotify playlist loading approved by user: guild={}, user={}, loading_tracks={}",
-										guild.getId(), member.getUser().getName(), result.tracks.size() - 1);
+								LOG.info("Action: APPROVED | GuildId: {} | User: {} ({}) | LoadingTracks: {}",
+										guild.getId(), member.getUser().getName(), member.getUser().getId(),
+										result.tracks.size());
 							}
 						}, 30, TimeUnit.SECONDS, () -> {
 							msg.editMessage(promptMsg).setComponents().queue();
-							LOG.info("Spotify playlist prompt timed out: guild={}, user={}", guild.getId(),
-									member.getUser().getName());
+							LOG.info("Action: TIMEOUT | GuildId: {} | User: {} ({})", guild.getId(),
+									member.getUser().getName(), member.getUser().getId());
 						});
 			});
 		});
