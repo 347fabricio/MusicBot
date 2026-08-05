@@ -8,6 +8,10 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Matching engine that evaluates YouTube search results against Spotify track metadata 
+ * to find the best audio match using artist/title heuristic scoring, duration thresholds, and metrics tracking.
+ */
 public class SpotifyTrackMatcher
 {
 	private static final Logger LOG = LoggerFactory.getLogger(SpotifyTrackMatcher.class);
@@ -20,6 +24,10 @@ public class SpotifyTrackMatcher
 	private static final AtomicLong durationRejections = new AtomicLong(0);
 	private static final AtomicLong failedMatches = new AtomicLong(0);
 
+	/**
+	 * Evaluates a list of candidate YouTube tracks and selects the optimal match based on official channels,
+	 * keywords, and duration safety bounds.
+	 */
 	public static AudioTrack selectBestMatch(List<AudioTrack> youtubeResults, String spotifyTitle, String spotifyArtist,
 			Integer spotifyDurationMs)
 	{
@@ -92,6 +100,9 @@ public class SpotifyTrackMatcher
 		return emergencyMatch;
 	}
 
+	/**
+	 * Extracts and normalizes the primary artist or channel name from author metadata.
+	 */
 	private static String isolateArtistName(String ytAuthor)
 	{
 		if (ytAuthor == null || ytAuthor.isEmpty())
@@ -102,6 +113,9 @@ public class SpotifyTrackMatcher
 		return rawArtist.toLowerCase();
 	}
 
+	/**
+	 * Formats and logs current heuristic match percentages and execution metrics to the application logger.
+	 */
 	public static void logMatchingStatistics()
 	{
 		long total = totalRequests.get();
@@ -134,6 +148,9 @@ public class SpotifyTrackMatcher
 				rejected, failed);
 	}
 
+	/**
+	 * Resets all internal atomic counters tracking heuristic match metrics.
+	 */
 	public static void resetStatistics()
 	{
 		totalRequests.set(0);
