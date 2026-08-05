@@ -10,10 +10,16 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Bridge utility for invoking the local Python scraper script to extract Spotify metadata.
+ */
 public class SpotifyBridge
 {
 	private static final Logger LOG = LoggerFactory.getLogger(SpotifyBridge.class);
 
+	/**
+	 * Container holding extracted Spotify track metadata and execution status.
+	 */
 	public static class SpotifyResult
 	{
 		public List<String> tracks;
@@ -30,6 +36,9 @@ public class SpotifyBridge
 		}
 	}
 
+	/**
+	 * Executes the Python scraping process to retrieve track names, artists, and durations for a Spotify ID.
+	 */
 	public static SpotifyResult getTrackInfo(String type, String id)
 	{
 		try

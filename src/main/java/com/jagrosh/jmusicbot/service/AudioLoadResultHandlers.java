@@ -260,8 +260,11 @@ public final class AudioLoadResultHandlers
 				handlePlaylistLoadResult(playlist, count);
 			}
 		}
-		
-		// explanation
+
+		/**
+	     * Displays an interactive track selection menu using JDA buttons, allowing the user 
+	     * to choose a specific search result or cancel the selection before queuing.
+	     */
 		private void displayTrackSelection(List<AudioTrack> topTracks, AudioPlaylist playlist)
 		{
 			List<Button> buttons = new ArrayList<>();
@@ -311,9 +314,14 @@ public final class AudioLoadResultHandlers
 			});
 		}
 
-		// explanation
+		/**
+		 * Utility factory for constructing standardized Discord embed messages.
+		 */
 		public class EmbedFactory
 		{
+			/**
+		     * Builds an embed message containing a numbered list of audio tracks for user selection.
+		     */
 			public static EmbedBuilder createMultiTrackEmbed(List<AudioTrack> tracks)
 			{
 				EmbedBuilder builder = new EmbedBuilder().setColor(Color.decode("#070707"))
@@ -341,9 +349,14 @@ public final class AudioLoadResultHandlers
 			}
 		}
 		
-		// explanation
+		/**
+		 * Utility class for formatting and processing audio track metadata.
+		 */
 		public class TrackUtil
 		{
+			/**
+		     * Sanitizes and truncates a track title for clean display in Discord embeds.
+		     */
 			public static String getFormattedTitle(String title)
 			{
 				if (title == null)

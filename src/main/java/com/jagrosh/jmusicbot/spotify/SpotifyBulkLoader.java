@@ -23,10 +23,16 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.interactions.InteractionHook;
 
+/**
+ * Bulk loader component for asynchronously resolving and enqueuing track batches retrieved via Spotify Bridge.
+ */
 public class SpotifyBulkLoader
 {
 	private static final Logger LOG = LoggerFactory.getLogger(SpotifyBulkLoader.class);
-
+	
+	/**
+	 * Resolves Spotify metadata queries against YouTube and adds the resulting tracks sequentially to the guild's queue.
+	 */
 	public static void loadPlaylist(Bot bot, Guild guild, Member member, TextChannel channel,
 			SpotifyBridge.SpotifyResult result, MusicService musicService, InteractionHook hook, String successEmoji)
 	{

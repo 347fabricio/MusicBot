@@ -27,6 +27,10 @@ import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 
+/**
+ * Handler responsible for prompting users with interactive Discord components (buttons)
+ * before enqueueing multi-track Spotify playlists.
+ */
 public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 {
 	private final Bot bot;
@@ -44,6 +48,9 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 
 	private static final Logger LOG = LoggerFactory.getLogger(SpotifyPlaylistPromptHandler.class);
 
+	/**
+	 * Constructs a new handler to display an interactive confirmation prompt for loading Spotify playlists.
+	 */
 	public SpotifyPlaylistPromptHandler(Bot bot, Guild guild, Member member, TextChannel channel,
 			OutputAdapter output, SpotifyBridge.SpotifyResult result, MusicService musicService)
 	{
@@ -90,6 +97,9 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 		channel.sendMessage(errorEmoji + " Error loading first track.").queue();
 	}
 
+	/**
+	 * Evaluates the first resolved track and builds the confirmation button message wait loop.
+	 */
 	private void processFirstTrack(AudioTrack track)
 	{
 		if (musicService.isTooLong(track))
