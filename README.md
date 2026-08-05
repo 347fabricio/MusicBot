@@ -46,6 +46,7 @@ This version of JMusicBot changes/updates various dependencies. To ensure your b
 ## Supported sources and formats
 JMusicBot supports all sources and formats supported by [lavaplayer](https://github.com/lavalink-devs/lavaplayer#supported-formats):
 ### Sources
+  * Spotify (*Spotify Metadata --> YouTube Audio*)
   * YouTube
   * SoundCloud
   * Bandcamp
