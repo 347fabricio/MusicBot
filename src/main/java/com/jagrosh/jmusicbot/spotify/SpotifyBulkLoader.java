@@ -188,7 +188,7 @@ public class SpotifyBulkLoader
 												hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
 														+ " Loaded **" + loadedCount.get() + "** additional tracks!")
 														.setComponents(Collections.emptyList()).queue();
-												SpotifyTrackMatcher.logMatchingStatistics();
+												// SpotifyTrackMatcher.logMatchingStatistics();
 											}
 										}
 									}));
