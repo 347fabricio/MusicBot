@@ -24,7 +24,6 @@ import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader.Playlist;
 import com.jagrosh.jmusicbot.queue.AbstractQueue;
 import com.jagrosh.jmusicbot.queue.PlaybackHistory;
-import com.jagrosh.jmusicbot.service.MusicService.OutputAdapter;
 import com.jagrosh.jmusicbot.settings.QueueType;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.Settings;

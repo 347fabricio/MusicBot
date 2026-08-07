@@ -238,19 +238,42 @@ public final class AudioLoadResultHandlers
             loadSingle(track, null);
         }
 
+        /**
+		 * Handles the completion of an AudioPlaylist load.
+		 * 
+		 * <p>If the loaded playlist is a search result (e.g. from YouTube search):
+		 * <ul>
+		 *   <li>If multiple matches are returned (> 1), presents an interactive 3-button selection UI
+		 *       for the top results.</li>
+		 *   <li>If exactly one match is returned, loads it directly as a single track instead of 
+		 *       treating it as a 1-item playlist.</li>
+		 * </ul>
+		 * 
+		 * <p>For non-search entities, it falls back to queueing either the pre-selected single track 
+		 * or processing the full playlist.
+		 *
+		 * @param playlist the loaded AudioPlaylist container
+		 */
 		@Override
 		public void playlistLoaded(AudioPlaylist playlist)
 		{
 			LOG.debug("Playlist loaded: guild={}, name=\"{}\", tracks={}", guild.getId(), playlist.getName(),
 					playlist.getTracks().size());
 
-			if (playlist.getTracks().size() > 1 && playlist.isSearchResult())
-			{
-				List<AudioTrack> tracks = playlist.getTracks();
-				int limit = Math.min(3, tracks.size());
-				List<AudioTrack> topTracks = tracks.subList(0, limit);
-				displayTrackSelection(topTracks, playlist);
-			} else if (playlist.getSelectedTrack() != null)
+			if (playlist.isSearchResult())
+		    {
+		        if (playlist.getTracks().size() > 1)
+		        {
+		            List<AudioTrack> tracks = playlist.getTracks();
+		            int limit = Math.min(3, tracks.size());
+		            List<AudioTrack> topTracks = new ArrayList<>(tracks.subList(0, limit)); // Defensively copy subList
+		            displayTrackSelection(topTracks, playlist);
+		        }
+		        else if (!playlist.getTracks().isEmpty())
+		        {
+		            loadSingle(playlist.getTracks().get(0), playlist);
+		        }
+		    } else if (playlist.getSelectedTrack() != null)
 			{
 				AudioTrack single = playlist.getSelectedTrack();
 				loadSingle(single, playlist);
