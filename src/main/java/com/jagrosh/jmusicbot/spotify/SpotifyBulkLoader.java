@@ -1,6 +1,8 @@
 package com.jagrosh.jmusicbot.spotify;
 
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -92,12 +94,12 @@ public class SpotifyBulkLoader
 							return;
 						}
 
-						AudioHandler handler = musicService.getHandler(guild);
+						AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
 						RequestMetadata rm = new RequestMetadata(member.getUser(),
 								new RequestMetadata.RequestInfo(firstQuery, track.getInfo().uri), channel.getIdLong());
-
-						int pos = (handler.getPlayer().getPlayingTrack() == null) ? 0 : handler.getQueue().size() + 1;
+						
 						handler.addTrack(new QueuedTrack(track, rm));
+						int pos = (handler.getPlayer().getPlayingTrack() == null) ? 0 : handler.getQueue().size() + 1;
 
 						String addMsg = FormatUtil.filter(successEmoji + " Added **" + track.getInfo().title + "** (`"
 								+ TimeUtil.formatTime(track.getDuration()) + "`) "
@@ -116,89 +118,112 @@ public class SpotifyBulkLoader
 						loadRemainingTracks(addMsg);
 					}
 
+					/**
+					 * Asynchronously resolves and queues the remaining tracks of a Spotify playlist or album
+					 * (from index 1 onward) using a bounded thread pool for parallel execution.
+					 * <p>
+					 * YouTube search lookups are dispatched concurrently to significantly cut down loading times.
+					 * Results are held in an index-aligned array to ensure tracks are added to the queue in 
+					 * their exact original playlist order once all lookups complete.
+					 * <p>
+					 * All track additions, queueing logic, and duration checks are routed through 
+					 * {@link MusicService#addTrackToQueue}, avoiding direct access to low-level audio handlers.
+					 *
+					 * @param addMsg The initial Discord response message string displayed when the first track 
+					 *               was queued, used as a header for the final completion message.
+					 */
 					private void loadRemainingTracks(String addMsg)
 					{
-						AtomicInteger progress = new AtomicInteger(1);
-						AtomicInteger loadedCount = new AtomicInteger(0);
+					    int totalTracks = result.tracks.size();
+					    int remainingCount = totalTracks - 1;
 
-						for (int i = 1; i < result.tracks.size(); i++)
-						{
-							final String sTitle = result.tracks.get(i);
-							final String sArtist = result.artists.get(i);
-							final Integer sDurationMs = result.durationMs.get(i);
-							final String trackQuery = sTitle + " " + sArtist;
+					    if (remainingCount <= 0)
+					    {
+					        return;
+					    }
 
-							bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + trackQuery,
-									bot.getAudioLoadWrapper().wrap(trackQuery, new AudioLoadResultHandler() {
+					    AudioTrack[] resolvedTracks = new AudioTrack[totalTracks];
+					    AtomicInteger completedTasks = new AtomicInteger(0);
+					    AtomicInteger loadedCount = new AtomicInteger(0);
 
-										@Override
-										public void trackLoaded(AudioTrack t)
-										{
-											addT(t);
-										}
+					    ExecutorService executor = Executors.newFixedThreadPool(Math.min(8, Runtime.getRuntime().availableProcessors() * 2));
 
-										@Override
-										public void playlistLoaded(AudioPlaylist p)
-										{
-											if (!p.getTracks().isEmpty())
-											{
-												AudioTrack bestMatch = SpotifyTrackMatcher
-														.selectBestMatch(p.getTracks(), sTitle, sArtist, sDurationMs);
-												addT(bestMatch);
-											} else
-											{
-												check();
-											}
-										}
+					    for (int i = 1; i < totalTracks; i++)
+					    {
+					        final int index = i;
+					        final String sTitle = result.tracks.get(i);
+					        final String sArtist = result.artists.get(i);
+					        final Integer sDurationMs = result.durationMs.get(i);
+					        final String trackQuery = sTitle + " " + sArtist;
 
-										@Override
-										public void noMatches()
-										{
-											check();
-										}
+					        executor.submit(() -> {
+					            try
+					            {
+					                bot.getPlayerManager().loadItem("ytsearch:" + trackQuery, new AudioLoadResultHandler() {
 
-										@Override
-										public void loadFailed(FriendlyException e)
-										{
-											check();
-										}
+					                    @Override
+					                    public void trackLoaded(AudioTrack t)
+					                    {
+					                        resolvedTracks[index] = t;
+					                    }
 
-										private void addT(AudioTrack t)
-										{
-											if (t == null)
-											{
-												LOG.warn("Null track discarded for search: \"{}\"",
-														trackQuery);
-											} else if (musicService.isTooLong(t))
-											{
-												LOG.warn(
-														"Track exceeded maximum duration ({}) and was discarded: \"{}\"",
-														t.getDuration(), t.getInfo().title);
-											} else
-											{
-												AudioHandler h = musicService.getHandler(guild);
-												RequestMetadata rm = new RequestMetadata(member.getUser(),
-														new RequestMetadata.RequestInfo(trackQuery, t.getInfo().uri),
-														channel.getIdLong());
+					                    @Override
+					                    public void playlistLoaded(AudioPlaylist p)
+					                    {
+					                        if (!p.getTracks().isEmpty())
+					                        {
+					                            AudioTrack bestMatch = SpotifyTrackMatcher
+					                                    .selectBestMatch(p.getTracks(), sTitle, sArtist, sDurationMs);
+					                            resolvedTracks[index] = bestMatch;
+					                        }
+					                    }
 
-												h.addTrack(new QueuedTrack(t, rm));
-												loadedCount.incrementAndGet();
-											}
-											check();
-										}
+					                    @Override
+					                    public void noMatches() {}
 
-										private void check()
-										{
-											if (progress.incrementAndGet() == result.tracks.size())
-											{
-												hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
-														+ " Loaded **" + loadedCount.get() + "** additional tracks!")
-														.setComponents(Collections.emptyList()).queue();
-												// SpotifyTrackMatcher.logMatchingStatistics();
-											}
-										}
-									}));
-						}
+					                    @Override
+					                    public void loadFailed(FriendlyException e) {}
+
+					                }).get();
+					            }
+					            catch (Exception e)
+					            {
+					                LOG.warn("Failed to search YouTube for: \"{}\"", trackQuery, e);
+					            }
+					            finally
+					            {
+					                if (completedTasks.incrementAndGet() == remainingCount)
+					                {
+					                    executor.shutdown();
+
+					                    AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
+					                    
+					                    for (int j = 1; j < totalTracks; j++)
+					                    {
+					                        AudioTrack track = resolvedTracks[j];
+					                        if (track == null)
+					                        {
+					                            LOG.warn("No match found for index {}; skipping.", j);
+					                            continue;
+					                        }
+
+					                        String searchQuery = result.tracks.get(j) + " " + result.artists.get(j);
+					                        RequestMetadata rm = new RequestMetadata(member.getUser(),
+					                                new RequestMetadata.RequestInfo(searchQuery, track.getInfo().uri),
+					                                channel.getIdLong());
+
+					                        handler.addTrack(new QueuedTrack(track, rm));
+					                        loadedCount.incrementAndGet();
+					                    }
+
+					                    hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
+					                            + " Loaded **" + loadedCount.get() + "** additional tracks!")
+					                            .setComponents(Collections.emptyList())
+					                            .queue();
+					                }
+					            }
+					        });
+					    }
 					}
 				}));
 	}

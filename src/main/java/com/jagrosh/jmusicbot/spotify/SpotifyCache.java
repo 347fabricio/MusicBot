@@ -5,8 +5,9 @@ import com.jagrosh.jmusicbot.spotify.SpotifyBridge.SpotifyResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -84,7 +85,7 @@ public class SpotifyCache
      */
     public void put(String type, String id, SpotifyResult result)
     {
-        if (result == null ||  result.tracks == null || !result.success  || result.tracks.isEmpty())
+        if (result == null || result.tracks == null || !result.success || result.tracks.isEmpty())
         {
             return;
         }
@@ -98,6 +99,45 @@ public class SpotifyCache
         Instant expiresAt = Instant.now().plusMillis(ttlMillis);
         cache.put(key, new CacheEntry(result, expiresAt));
         LOG.debug("Cached Spotify metadata for [{}:{}]", key.type(), key.id());
+    }
+
+    /**
+     * Loops through playlist/album tracks and caches each track under its individual track ID.
+     */
+    public void populateIndividualTrackCache(
+            List<String> ids, 
+            List<String> tracks, 
+            List<String> artists, 
+            List<Integer> durations)
+    {
+        if (ids == null || tracks == null || artists == null || durations == null)
+        {
+            return;
+        }
+
+        int cachedCount = 0;
+
+        for (int i = 0; i < tracks.size(); i++)
+        {
+            String trackId = (i < ids.size()) ? ids.get(i) : null;
+
+            if (trackId == null || trackId.isBlank())
+            {
+                continue;
+            }
+
+            SpotifyResult singleTrackResult = new SpotifyResult(
+                    Collections.singletonList(tracks.get(i)),
+                    Collections.singletonList(artists.get(i)),
+                    Collections.singletonList(durations.get(i)),
+                    true
+            );
+
+            put("track", trackId, singleTrackResult);
+            cachedCount++;
+        }
+
+        LOG.info("Pre-populated JVM cache with {} individual tracks from playlist/album.", cachedCount);
     }
 
     public void clear()

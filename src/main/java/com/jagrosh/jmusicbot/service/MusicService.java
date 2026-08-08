@@ -89,7 +89,7 @@ public class MusicService
      * @param guild The guild
      * @return The AudioHandler, or null if none exists
      */
-    public AudioHandler getHandler(Guild guild)
+    private AudioHandler getHandler(Guild guild)
     {
         return (AudioHandler) guild.getAudioManager().getSendingHandler();
     }

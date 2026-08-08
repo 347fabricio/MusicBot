@@ -2,11 +2,11 @@ package com.jagrosh.jmusicbot.spotify;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jagrosh.jmusicbot.utils.PythonScriptManager;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
@@ -20,8 +20,9 @@ import org.slf4j.LoggerFactory;
 public class SpotifyBridge
 {
     private static final Logger LOG = LoggerFactory.getLogger(SpotifyBridge.class);
-
+    
     private static final SpotifyCache CACHE = new SpotifyCache();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final int MAX_CONCURRENT_SCRAPERS = 4;
     private static final Semaphore SCRAPER_SEMAPHORE = new Semaphore(MAX_CONCURRENT_SCRAPERS, true);
@@ -67,31 +68,31 @@ public class SpotifyBridge
     }
 
     /**
-	 * Spawns an external Python process to scrape Spotify metadata via {@code scrapper.py}.
-	 * 
-	 * <p>This method executes the following workflow:
-	 * <ul>
-	 *   <li>Acquires a permit from {@link #SCRAPER_SEMAPHORE} (max 4 parallel executions, 5s acquire timeout)
-	 *       to bound system resource usage and mitigate Spotify rate limiting.</li>
-	 *   <li>Executes {@code scrapper.py} inside the local virtual environment ({@code .venv})
-	 *       enforcing a 20-second hard execution timeout.</li>
-	 *   <li>Redirects stderr to stdout via {@link ProcessBuilder#redirectErrorStream(boolean)} to prevent stream 
-	 *       deadlocks and capture full Python tracebacks upon failure.</li>
-	 *   <li>Parses the index-aligned batch JSON payload returned by Python, extracting track/episode titles, 
-	 *       artists/shows, duration arrays, and {@code track_ids}.</li>
-	 *   <li>Handles both top-level execution errors (e.g. rate limits, timeout) and item-level 
-	 *       lookup failures (e.g. 404 Not Found).</li>
-	 *   <li>For container entities ({@code playlist} or {@code album}), automatically invokes
-	 *       {@link #populateIndividualTrackCache(List, List, List, List)} using the extracted {@code track_ids}
-	 *       to pre-seed JVM cache for future single-track requests.</li>
-	 *   <li>Guarantees semaphore permit release in a {@code finally} block regardless of execution outcome.</li>
-	 * </ul>
-	 *
-	 * @param type the Spotify entity type ({@code "track"}, {@code "episode"}, {@code "playlist"}, or {@code "album"})
-	 * @param id   the 22-character Spotify resource identifier
-	 * @return a {@link SpotifyResult} containing parallel lists of track titles, artist/show names, 
-	 *         and duration values; returns a failed result if Python exits unexpectedly, times out, or concurrency permits are exhausted
-	 */
+     * Spawns an external Python process to scrape Spotify metadata via {@code scrapper.py}.
+     * 
+     * <p>This method executes the following workflow:
+     * <ul>
+     *    <li>Acquires a permit from {@link #SCRAPER_SEMAPHORE} (max 4 parallel executions, 5s acquire timeout)
+     *        to bound system resource usage and mitigate Spotify rate limiting.</li>
+     *    <li>Executes {@code scrapper.py} inside the local virtual environment ({@code .venv})
+     *        enforcing a 20-second hard execution timeout.</li>
+     *    <li>Redirects stderr to stdout via {@link ProcessBuilder#redirectErrorStream(boolean)} to prevent stream 
+     *        deadlocks and capture full Python tracebacks upon failure.</li>
+     *    <li>Parses the index-aligned batch JSON payload returned by Python, extracting track/episode titles, 
+     *        artists/shows, duration arrays, and {@code track_ids}.</li>
+     *    <li>Handles both top-level execution errors (e.g. rate limits, timeout) and item-level 
+     *        lookup failures (e.g. 404 Not Found).</li>
+     *    <li>For container entities ({@code playlist} or {@code album}), automatically invokes
+     *        {@link #preseedTracks(List, List, List, List)} using the extracted {@code track_ids}
+     *        to pre-seed JVM cache for future single-track requests.</li>
+     *    <li>Guarantees semaphore permit release in a {@code finally} block regardless of execution outcome.</li>
+     * </ul>
+     *
+     * @param type the Spotify entity type ({@code "track"}, {@code "episode"}, {@code "playlist"}, or {@code "album"})
+     * @param id   the 22-character Spotify resource identifier
+     * @return a {@link SpotifyResult} containing parallel lists of track titles, artist/show names, 
+     *         and duration values; returns a failed result if Python exits unexpectedly, times out, or concurrency permits are exhausted
+     */
     private static SpotifyResult executeScript(String type, String id)
     {
         boolean permitAcquired = false;
@@ -104,11 +105,17 @@ public class SpotifyBridge
                         MAX_CONCURRENT_SCRAPERS, type, id);
                 return new SpotifyResult(null, null, null, false);
             }
+            
+            File scriptFile = PythonScriptManager.getScriptFile();
+            if (scriptFile == null) 
+            {
+                LOG.error("Cannot execute scraper: scrapper.py is missing and extraction failed.");
+                return new SpotifyResult(null, null, null, false);
+            }
 
-            String baseDir = System.getProperty("user.dir");
-            String pythonPath = baseDir + File.separator + ".venv" + File.separator + "bin" + File.separator + "python"; 
-            ProcessBuilder pb = new ProcessBuilder(pythonPath, "scrapper.py", type, id);
-
+            String pythonPath = PythonScriptManager.getPythonExecutablePath();
+            ProcessBuilder pb = new ProcessBuilder(pythonPath, scriptFile.getAbsolutePath(), type, id);
+            
             pb.redirectErrorStream(true);
 
             Process p = pb.start();
@@ -135,14 +142,13 @@ public class SpotifyBridge
 
             if (exitCode != 0)
             {
-                LOG.error("Python process exited with code {} for [{}:{}]. Output: {}", exitCode, type, id, rawOutput);
+            	LOG.error("Python process exited with code {} for [{}:{}]. Output: {}", exitCode, type, id, rawOutput);
                 return new SpotifyResult(null, null, null, false);
             }
 
             if (!rawOutput.isEmpty())
             {
-                ObjectMapper mapper = new ObjectMapper();
-                JsonNode root = mapper.readTree(rawOutput);
+                JsonNode root = OBJECT_MAPPER.readTree(rawOutput);
 
                 if (root.has("error"))
                 {
@@ -163,46 +169,23 @@ public class SpotifyBridge
                 if (itemNode.has("error") || (itemNode.has("success") && !itemNode.get("success").asBoolean()))
                 {
                     String itemError = itemNode.has("error") ? itemNode.get("error").asText() : "Unknown item error";
-                    LOG.error("Python item lookup failed for [{}:{}]: {}", type, id, itemError);
+                    LOG.error("Python item lookup failed for [{:{}]: {}", type, id, itemError);
                     return new SpotifyResult(null, null, null, false);
                 }
 
-                JsonNode idsNode = itemNode.has("track_ids") ? itemNode.get("track_ids") : itemNode.get("ids");
-                JsonNode tracksNode = itemNode.get("tracks");
-                JsonNode artistsNode = itemNode.get("artists");
-                JsonNode durationMsNode = itemNode.get("duration_ms");
+                TrackPayloadParser.ParsedTrackPayload payload = TrackPayloadParser.parseTrackPayload(itemNode);
+                boolean isSuccess = !payload.isEmpty();
 
-                List<String> idsList = new ArrayList<>();
-                List<String> tracksList = new ArrayList<>();
-                List<String> artistsList = new ArrayList<>();
-                List<Integer> durationMsList = new ArrayList<>();
-
-                if (tracksNode != null && tracksNode.isArray())
-                {
-                    for (int i = 0; i < tracksNode.size(); i++)
-                    {
-                        String trackIdVal = (idsNode != null && idsNode.has(i)) 
-                                ? idsNode.get(i).asText() : "";
-                        idsList.add(trackIdVal);
-                        
-                        tracksList.add(tracksNode.get(i).asText());
-
-                        String artist = (artistsNode != null && artistsNode.has(i)) 
-                                ? artistsNode.get(i).asText() : "";
-                        artistsList.add(artist);
-
-                        int duration = (durationMsNode != null && durationMsNode.has(i)) 
-                                ? durationMsNode.get(i).asInt() : 0;
-                        durationMsList.add(duration);
-                    }
-                }
-
-                boolean isSuccess = !tracksList.isEmpty();
-                SpotifyResult fullResult = new SpotifyResult(tracksList, artistsList, durationMsList, isSuccess);
+                SpotifyResult fullResult = new SpotifyResult(
+                        payload.tracks(), 
+                        payload.artists(), 
+                        payload.durations(), 
+                        isSuccess
+                );
 
                 if (isSuccess && ("playlist".equalsIgnoreCase(type) || "album".equalsIgnoreCase(type)))
                 {
-                    populateIndividualTrackCache(idsList, tracksList, artistsList, durationMsList);
+                    preseedTracks(payload.ids(), payload.tracks(), payload.artists(), payload.durations());
                 }
 
                 return fullResult;
@@ -227,46 +210,21 @@ public class SpotifyBridge
 
         return new SpotifyResult(null, null, null, false);
     }
-    
-    /**
-     * Loops through playlist/album tracks and caches each track under its individual track ID.
-     */
-    private static void populateIndividualTrackCache(
-            List<String> ids, 
-            List<String> tracks, 
-            List<String> artists, 
-            List<Integer> durations)
-    {
-        int cachedCount = 0;
-
-        for (int i = 0; i < tracks.size(); i++)
-        {
-            String trackId = (i < ids.size()) ? ids.get(i) : null;
-
-            if (trackId == null || trackId.isBlank())
-            {
-                continue;
-            }
-
-            SpotifyResult singleTrackResult = new SpotifyResult(
-                    Collections.singletonList(tracks.get(i)),
-                    Collections.singletonList(artists.get(i)),
-                    Collections.singletonList(durations.get(i)),
-                    true
-            );
-
-            CACHE.put("track", trackId, singleTrackResult);
-            cachedCount++;
-        }
-
-        LOG.info("Pre-populated JVM cache with {} individual tracks from playlist/album.", cachedCount);
-    }
 
     /**
-     * Optional helper method to manually clear the cache if needed.
+     * Pre-populates the in-memory JVM cache with individual track metadata
+     * returned from a batch playlist or album resolution.
+     * <p>
+     * This eliminates the need to spawn a Python process if any of these
+     * tracks are subsequently requested as single items.
+     *
+     * @param ids       List of Spotify track IDs matching the order of the items
+     * @param tracks    List of track titles
+     * @param artists   List of artist names
+     * @param durations List of track durations in milliseconds
      */
-    public static void clearCache()
+    public static void preseedTracks(List<String> ids, List<String> tracks, List<String> artists, List<Integer> durations)
     {
-        CACHE.clear();
+        CACHE.populateIndividualTrackCache(ids, tracks, artists, durations);
     }
 }

@@ -19,8 +19,6 @@ import com.jagrosh.jmusicbot.Bot;
 import com.jagrosh.jmusicbot.audio.AudioHandler;
 import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
-import com.jagrosh.jmusicbot.service.AudioLoadResultHandlers.PlayResultHandler.EmbedFactory;
-import com.jagrosh.jmusicbot.service.AudioLoadResultHandlers.PlayResultHandler.TrackUtil;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
@@ -266,7 +264,7 @@ public final class AudioLoadResultHandlers
 		        {
 		            List<AudioTrack> tracks = playlist.getTracks();
 		            int limit = Math.min(3, tracks.size());
-		            List<AudioTrack> topTracks = new ArrayList<>(tracks.subList(0, limit)); // Defensively copy subList
+		            List<AudioTrack> topTracks = new ArrayList<>(tracks.subList(0, limit));
 		            displayTrackSelection(topTracks, playlist);
 		        }
 		        else if (!playlist.getTracks().isEmpty())
@@ -316,18 +314,16 @@ public final class AudioLoadResultHandlers
 								AudioTrack track = topTracks.get(index);
 
 								AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
-
 								RequestMetadata rm = new RequestMetadata(member.getUser(),
 										new RequestMetadata.RequestInfo(args, track.getInfo().uri),
 										channel.getIdLong());
-								QueuedTrack qt = new QueuedTrack(track, rm);
-								handler.addTrack(qt);
-
-								int pos = handler.getQueue().size();
+								
+								handler.addTrack(new QueuedTrack(track, rm));
+								int pos = (handler.getPlayer().getPlayingTrack() == null) ? 0 : handler.getQueue().size() + 1;
+								
 								String addMsg = FormatUtil.filter(bot.getConfig().getSuccess() + " Added **"
 										+ track.getInfo().title + "** (`" + TimeUtil.formatTime(track.getDuration())
 										+ "`) " + (pos > 0 ? " to the queue at position " + pos : "to begin playing"));
-								//
 								e.editMessage(addMsg).setComponents().setEmbeds().queue();
 
 							}, 30, TimeUnit.SECONDS, () -> msg.delete().queue(null, error -> {
