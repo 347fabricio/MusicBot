@@ -74,7 +74,9 @@ Please see the [Setup Page](https://jmusicbot.com/setup) to run this bot yoursel
 
 To begin with:
 
-```
+### Linux
+
+```bash
 # Create the virtual environment (replace "python3.12" with your installed version)
 python3.12 -m venv .venv
 
@@ -86,24 +88,40 @@ pip install -r requirements.txt
 
 # Deactivate the environment after installation
 deactivate
-
-# To run in headless mode (no GUI)
-# java -Dfile.encoding=UTF-8 -Dnogui=true --enable-native-access=ALL-UNNAMED -jar JMusicBot-x.y.z-All.jar
 ```
 
-> Note: Replace JMusicBot-x.y.z-All.jar with the actual file name.
+### Windows
 
-When running JMusicBot directly (not in Docker), make sure to pass these JVM flags:
+```powershell
+# Create the virtual environment (use 'py -m venv .venv' or 'python -m venv .venv')
+python -m venv .venv
+
+# Activate the environment (Command Prompt / CMD)
+.venv\Scripts\activate.bat
+
+# OR Activate the environment (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Install required dependencies
+pip install -r requirements.txt
+
+# Deactivate the environment after installation
+deactivate
+```
+> **Note for Windows PowerShell users:** If you get an `Execution_Policies` script restriction error when activating, run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process` first in your session.
 
 **Linux / macOS / Windows (CMD):**
 ```bash
-java -Dfile.encoding=UTF-8 -Dnogui=true --enable-native-access=ALL-UNNAMED -jar JMusicBot-0.6.2-All.jar
+java -Dfile.encoding=UTF-8 -Dnogui=true --enable-native-access=ALL-UNNAMED -jar JMusicBot-x.y.z-All.jar
 ```
 
 **Windows (PowerShell):** PowerShell treats `-D` as its own parameter. Quote each JVM option so they are passed to `java` correctly:
 ```powershell
-java "-Dfile.encoding=UTF-8" "-Dnogui=true" "--enable-native-access=ALL-UNNAMED" "-jar" ".\JMusicBot-0.6.2-All.jar"
+java "-Dfile.encoding=UTF-8" "-Dnogui=true" "--enable-native-access=ALL-UNNAMED" "-jar" ".\JMusicBot-x.y.z-All.jar"
 ```
+
+> **Note:** Replace `JMusicBot-x.y.z-All.jar` with your actual compiled JAR file name.
+
 Alternatively, use the stop-parsing token so the rest of the line is passed literally: `java --% -Dfile.encoding=UTF-8 -Dnogui=true ...`
 
 `-Dfile.encoding=UTF-8` ensures non-English characters (Cyrillic, Japanese, etc.) display correctly in Discord. On Windows or older JDKs, omitting it can cause mojibake in slash-command autocomplete and embeds.
