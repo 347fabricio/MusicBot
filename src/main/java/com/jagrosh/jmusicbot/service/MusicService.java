@@ -24,7 +24,6 @@ import com.jagrosh.jmusicbot.playlist.PlaylistLoader;
 import com.jagrosh.jmusicbot.playlist.PlaylistLoader.Playlist;
 import com.jagrosh.jmusicbot.queue.AbstractQueue;
 import com.jagrosh.jmusicbot.queue.PlaybackHistory;
-import com.jagrosh.jmusicbot.service.MusicService.OutputAdapter;
 import com.jagrosh.jmusicbot.settings.QueueType;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.Settings;
@@ -90,7 +89,7 @@ public class MusicService
      * @param guild The guild
      * @return The AudioHandler, or null if none exists
      */
-    public AudioHandler getHandler(Guild guild)
+    private AudioHandler getHandler(Guild guild)
     {
         return (AudioHandler) guild.getAudioManager().getSendingHandler();
     }
@@ -277,66 +276,80 @@ public class MusicService
     }
 
     public void play(Guild guild, Member member, String args, TextChannel channel, OutputAdapter output)
-	{
-		LOG.debug("Play requested: guild={}, user={}, args={}", guild.getId(), member.getUser().getName(), args);
+    {
+        LOG.debug("Play requested: guild={}, user={}, args={}", guild.getId(), member.getUser().getName(), args);
 
-		if (args != null && args.startsWith("\"") && args.endsWith("\""))
-			args = args.substring(1, args.length() - 1);
+        if (args != null && args.startsWith("\"") && args.endsWith("\""))
+            args = args.substring(1, args.length() - 1);
 
-		if (args == null || args.isEmpty())
-		{
-			AudioHandler handler = getHandler(guild);
-			if (handler.getPlayer().getPlayingTrack() != null && handler.getPlayer().isPaused())
-			{
-				if (DJCommand.checkDJPermission(bot, guild, member))
-				{
-					handler.getPlayer().setPaused(false);
-					LOG.info("Playback resumed: guild={}, user={}, track=\"{}\"", guild.getId(),
-							member.getUser().getName(), handler.getPlayer().getPlayingTrack().getInfo().title);
-					String resumedTitle = FormatUtil.getTrackTitle(handler.getPlayer().getPlayingTrack());
-					output.replySuccess("Resumed **" + resumedTitle + "**.");
-				} else
-				{
-					LOG.debug("Resume rejected: user lacks DJ permission");
-					output.replyError("Only DJs can unpause the player!");
-				}
-				return;
-			}
-			output.onShowHelp();
-			return;
-		}
+        if (args == null || args.isEmpty())
+        {
+            AudioHandler handler = getHandler(guild);
+            if (handler.getPlayer().getPlayingTrack() != null && handler.getPlayer().isPaused())
+            {
+                if (DJCommand.checkDJPermission(bot, guild, member))
+                {
+                    handler.getPlayer().setPaused(false);
+                    LOG.info("Playback resumed: guild={}, user={}, track=\"{}\"", guild.getId(),
+                            member.getUser().getName(), handler.getPlayer().getPlayingTrack().getInfo().title);
+                    String resumedTitle = FormatUtil.getTrackTitle(handler.getPlayer().getPlayingTrack());
+                    output.replySuccess("Resumed **" + resumedTitle + "**.");
+                } else
+                {
+                    LOG.debug("Resume rejected: user lacks DJ permission");
+                    output.replyError("Only DJs can unpause the player!");
+                }
+                return;
+            }
+            output.onShowHelp();
+            return;
+        }
 
-		SpotifyParser.SpotifyData spotifyData = SpotifyParser.parse(args);
-
+        SpotifyParser.SpotifyData spotifyData = SpotifyParser.parse(args);
+        
 		if (spotifyData != null)
 		{
-			SpotifyBridge.SpotifyResult result = SpotifyBridge.getTrackInfo(spotifyData.type(), spotifyData.id());
-
-			if (result != null && result.success && !result.tracks.isEmpty())
-			{
-				String query = result.tracks.get(0) + " " + result.artists.get(0);
-
-				if (result.tracks.size() > 1)
+			SpotifyBridge.getTrackInfoAsync(spotifyData.type(), spotifyData.id()).thenAcceptAsync(result -> {
+				if (result != null && result.success && result.tracks != null && !result.tracks.isEmpty())
 				{
-					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query, bot.getAudioLoadWrapper().wrap(
-							query,
-							new SpotifyPlaylistPromptHandler(bot, guild, member, channel, output, result, this)));
-					return;
+					String query = result.tracks.get(0) + " " + result.artists.get(0);
+					String ytQuery = "ytsearch:" + query;
+
+					if (result.tracks.size() > 1)
+					{
+						bot.getPlayerManager().loadItemOrdered(guild, ytQuery, bot.getAudioLoadWrapper().wrap(ytQuery,
+								new SpotifyPlaylistPromptHandler(bot, guild, member, channel, output, result, this)));
+					} else
+					{
+						bot.getPlayerManager().loadItemOrdered(guild, ytQuery,
+								bot.getAudioLoadWrapper().wrap(ytQuery, new AudioLoadResultHandlers.PlayResultHandler(
+										this, bot, output, guild, member, ytQuery, true, channel) {
+								}));
+					}
 				} else
 				{
-					bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + query,
-							bot.getAudioLoadWrapper().wrap(query, new AudioLoadResultHandlers.PlayResultHandler(this,
-									bot, output, guild, member, query, true, channel)));
+					if (!SpotifyBridge.isEnabled())
+					{
+						output.replyError(
+								"Spotify integration is currently disabled (Python environment not available).");
+					} else
+					{
+						output.replyError(
+								"Could not retrieve Spotify metadata for this link. Please check if the URL is valid or public.");
+					}
 				}
-			}
+			}).exceptionally(throwable -> {
+				LOG.error("Failed to process Spotify track info asynchronously", throwable);
+				output.replyError("An error occurred while resolving the Spotify link.");
+				return null;
+			});
 		} else
 		{
 			bot.getPlayerManager().loadItemOrdered(guild, args,
 					bot.getAudioLoadWrapper().wrap(args, new AudioLoadResultHandlers.PlayResultHandler(this, bot,
 							output, guild, member, args, false, channel)));
 		}
-
-	}
+    }
 
 
     public void previous(Guild guild, Member member, OutputAdapter output)

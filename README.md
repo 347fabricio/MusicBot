@@ -82,7 +82,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 
 # Install required dependencies
-pip install spotifyscraper
+pip install -r requirements.txt
 
 # Deactivate the environment after installation
 deactivate
@@ -91,7 +91,7 @@ deactivate
 # java -Dfile.encoding=UTF-8 -Dnogui=true --enable-native-access=ALL-UNNAMED -jar JMusicBot-x.y.z-All.jar
 ```
 
-> Note: Please replace `JMusicBot-x.y.z-All.jar` with the actual version number of the file you downloaded.
+> Note: Replace JMusicBot-x.y.z-All.jar with the actual file name.
 
 When running JMusicBot directly (not in Docker), make sure to pass these JVM flags:
 

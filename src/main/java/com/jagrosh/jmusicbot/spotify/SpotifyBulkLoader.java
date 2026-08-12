@@ -1,18 +1,18 @@
 package com.jagrosh.jmusicbot.spotify;
 
 import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jagrosh.jmusicbot.Bot;
-import com.jagrosh.jmusicbot.audio.AudioHandler;
-import com.jagrosh.jmusicbot.audio.QueuedTrack;
-import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.service.MusicService;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
-import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
@@ -28,178 +28,268 @@ import net.dv8tion.jda.api.interactions.InteractionHook;
  */
 public class SpotifyBulkLoader
 {
-	private static final Logger LOG = LoggerFactory.getLogger(SpotifyBulkLoader.class);
-	
-	/**
-	 * Resolves Spotify metadata queries against YouTube and adds the resulting tracks sequentially to the guild's queue.
-	 */
-	public static void loadPlaylist(Bot bot, Guild guild, Member member, TextChannel channel,
-			SpotifyBridge.SpotifyResult result, MusicService musicService, InteractionHook hook, String successEmoji)
-	{
+    private static final Logger LOG = LoggerFactory.getLogger(SpotifyBulkLoader.class);
 
-		if (result.tracks.isEmpty())
-			return;
+    private static final ConcurrentHashMap<Long, Long> ACTIVE_LOAD_TOKENS = new ConcurrentHashMap<>();
+    private static final AtomicLong TOKEN_GENERATOR = new AtomicLong(0);
 
-		String firstTitle = result.tracks.get(0);
-		String firstArtist = result.artists.get(0);
-		Integer firstDurationMs = result.durationMs.get(0);
-		String firstQuery = firstTitle + " " + firstArtist;
+    /**
+     * Cancels any active Spotify background loading task for the specified guild.
+     * Call this from commands like /stop, /clear, or when starting a new playback command.
+     *
+     * @param guildId the ID of the guild whose loading tasks should be cancelled
+     */
+    public static void cancelLoading(long guildId)
+    {
+        ACTIVE_LOAD_TOKENS.remove(guildId);
+        LOG.debug("Cancelled active Spotify bulk load for guild {}", guildId);
+    }
 
-		bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + firstQuery,
-				bot.getAudioLoadWrapper().wrap(firstQuery, new AudioLoadResultHandler() {
+    private static boolean isCancelled(long guildId, long token)
+    {
+        Long activeToken = ACTIVE_LOAD_TOKENS.get(guildId);
+        return activeToken == null || activeToken != token;
+    }
 
-					@Override
-					public void trackLoaded(AudioTrack t)
-					{
-						processFirstTrackAndContinue(t);
-					}
+    /**
+     * Resolves Spotify metadata queries against YouTube and adds the resulting tracks sequentially to the guild's queue.
+     */
+    public static void loadPlaylist(Bot bot, Guild guild, Member member, TextChannel channel,
+            SpotifyBridge.SpotifyResult result, MusicService musicService, InteractionHook hook)
+    {
+        if (result == null || result.tracks == null || result.tracks.isEmpty())
+            return;
 
-					@Override
-					public void playlistLoaded(AudioPlaylist p)
-					{
-						if (!p.getTracks().isEmpty())
-						{
-							AudioTrack bestMatch = SpotifyTrackMatcher.selectBestMatch(p.getTracks(), firstTitle,
-									firstArtist, firstDurationMs);
-							processFirstTrackAndContinue(bestMatch != null ? bestMatch : p.getTracks().get(0));
-						} else
-						{
-							noMatches();
-						}
-					}
+        long guildId = guild.getIdLong();
+        long loadToken = TOKEN_GENERATOR.incrementAndGet();
+        ACTIVE_LOAD_TOKENS.put(guildId, loadToken);
 
-					@Override
-					public void noMatches()
-					{
-						hook.editOriginal(bot.getConfig().getWarning()
-								+ " Could not find a match for the first track: **" + firstTitle + "**")
-								.setComponents(Collections.emptyList()).queue();
-					}
+        String successEmoji = bot.getConfig().getSuccess();
+        String warningEmoji = bot.getConfig().getWarning();
 
-					@Override
-					public void loadFailed(FriendlyException e)
-					{
-						hook.editOriginal(
-								bot.getConfig().getWarning() + " Failed to load first track: " + e.getMessage())
-								.setComponents(Collections.emptyList()).queue();
-					}
+        String firstTitle = result.tracks.get(0);
+        String firstArtist = (result.artists != null && !result.artists.isEmpty()) ? result.artists.get(0) : "";
+        Integer firstDurationMs = (result.durationMs != null && !result.durationMs.isEmpty()) ? result.durationMs.get(0) : null;
+        String firstQuery = firstTitle + " " + firstArtist;
 
-					private void processFirstTrackAndContinue(AudioTrack track)
-					{
-						if (track == null)
-						{
-							noMatches();
-							return;
-						}
+        bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + firstQuery,
+                bot.getAudioLoadWrapper().wrap(firstQuery, new AudioLoadResultHandler() {
 
-						AudioHandler handler = musicService.getHandler(guild);
-						RequestMetadata rm = new RequestMetadata(member.getUser(),
-								new RequestMetadata.RequestInfo(firstQuery, track.getInfo().uri), channel.getIdLong());
+                    @Override
+                    public void trackLoaded(AudioTrack t)
+                    {
+                        processFirstTrackAndContinue(t);
+                    }
 
-						int pos = (handler.getPlayer().getPlayingTrack() == null) ? 0 : handler.getQueue().size() + 1;
-						handler.addTrack(new QueuedTrack(track, rm));
+                    @Override
+                    public void playlistLoaded(AudioPlaylist p)
+                    {
+                        if (!p.getTracks().isEmpty())
+                        {
+                            AudioTrack bestMatch = SpotifyTrackMatcher.selectBestMatch(p.getTracks(), firstTitle,
+                                    firstArtist, firstDurationMs);
+                            processFirstTrackAndContinue(bestMatch != null ? bestMatch : p.getTracks().get(0));
+                        } 
+                        else
+                        {
+                            noMatches();
+                        }
+                    }
 
-						String addMsg = FormatUtil.filter(successEmoji + " Added **" + track.getInfo().title + "** (`"
-								+ TimeUtil.formatTime(track.getDuration()) + "`) "
-								+ (pos > 0 ? "to the queue at position " + pos : "to begin playing"));
+                    @Override
+                    public void noMatches()
+                    {
+                        ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
+                        hook.editOriginal(bot.getConfig().getWarning()
+                                + " Could not find a match for the first track: **" + firstTitle + "**")
+                                .setComponents(Collections.emptyList()).queue();
+                    }
 
-						if (result.tracks.size() == 1)
-						{
-							hook.editOriginal(addMsg).setComponents(Collections.emptyList()).queue();
-							return;
-						}
+                    @Override
+                    public void loadFailed(FriendlyException e)
+                    {
+                        ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
+                        hook.editOriginal(
+                                bot.getConfig().getWarning() + " Failed to load first track: " + e.getMessage())
+                                .setComponents(Collections.emptyList()).queue();
+                    }
 
-						hook.editOriginal(
-								addMsg + "\n🔄 Loading " + (result.tracks.size() - 1) + " additional tracks...")
-								.setComponents(Collections.emptyList()).queue();
+                    private void processFirstTrackAndContinue(AudioTrack track)
+                    {
+                        if (isCancelled(guildId, loadToken))
+                        {
+                            LOG.debug("Spotify bulk load cancelled before processing first track for guild {}", guildId);
+                            return;
+                        }
 
-						loadRemainingTracks(addMsg);
-					}
+                        if (track == null)
+                        {
+                            noMatches();
+                            return;
+                        }
 
-					private void loadRemainingTracks(String addMsg)
-					{
-						AtomicInteger progress = new AtomicInteger(1);
-						AtomicInteger loadedCount = new AtomicInteger(0);
+                        MusicService.TrackAddResult addResult = musicService.addTrackToQueue(guild, member, track,
+                                "Spotify: " + track.getInfo().uri, channel);
 
-						for (int i = 1; i < result.tracks.size(); i++)
-						{
-							final String sTitle = result.tracks.get(i);
-							final String sArtist = result.artists.get(i);
-							final Integer sDurationMs = result.durationMs.get(i);
-							final String trackQuery = sTitle + " " + sArtist;
+                        String addMsg;
 
-							bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + trackQuery,
-									bot.getAudioLoadWrapper().wrap(trackQuery, new AudioLoadResultHandler() {
+                        if (addResult == null)
+                        {
+                            addMsg = FormatUtil.filter(warningEmoji + " " + musicService.formatTooLongError(track));
 
-										@Override
-										public void trackLoaded(AudioTrack t)
-										{
-											addT(t);
-										}
+                            if (result.tracks.size() == 1)
+                            {
+                                ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
+                                hook.editOriginal(addMsg).setComponents(Collections.emptyList()).queue();
+                                return;
+                            }
+                        } 
+                        else
+                        {
+                            addMsg = FormatUtil.filter(successEmoji + " " + addResult.formattedMessage);
+                        }
 
-										@Override
-										public void playlistLoaded(AudioPlaylist p)
-										{
-											if (!p.getTracks().isEmpty())
-											{
-												AudioTrack bestMatch = SpotifyTrackMatcher
-														.selectBestMatch(p.getTracks(), sTitle, sArtist, sDurationMs);
-												addT(bestMatch);
-											} else
-											{
-												check();
-											}
-										}
+                        if (result.tracks.size() == 1)
+                        {
+                            ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
+                            hook.editOriginal(addMsg).setComponents(Collections.emptyList()).queue();
+                            return;
+                        }
 
-										@Override
-										public void noMatches()
-										{
-											check();
-										}
+                        hook.editOriginal(
+                                addMsg + "\n🔄 Loading " + (result.tracks.size() - 1) + " additional tracks...")
+                                .setComponents(Collections.emptyList()).queue();
 
-										@Override
-										public void loadFailed(FriendlyException e)
-										{
-											check();
-										}
+                        loadRemainingTracks(addMsg, loadToken);
+                    }
 
-										private void addT(AudioTrack t)
-										{
-											if (t == null)
-											{
-												LOG.warn("Null track discarded for search: \"{}\"",
-														trackQuery);
-											} else if (musicService.isTooLong(t))
-											{
-												LOG.warn(
-														"Track exceeded maximum duration ({}) and was discarded: \"{}\"",
-														t.getDuration(), t.getInfo().title);
-											} else
-											{
-												AudioHandler h = musicService.getHandler(guild);
-												RequestMetadata rm = new RequestMetadata(member.getUser(),
-														new RequestMetadata.RequestInfo(trackQuery, t.getInfo().uri),
-														channel.getIdLong());
+                    private void loadRemainingTracks(String addMsg, long token)
+                    {
+                        int totalTracks = result.tracks.size();
+                        int remainingCount = totalTracks - 1;
 
-												h.addTrack(new QueuedTrack(t, rm));
-												loadedCount.incrementAndGet();
-											}
-											check();
-										}
+                        if (remainingCount <= 0)
+                        {
+                            ACTIVE_LOAD_TOKENS.remove(guildId, token);
+                            return;
+                        }
 
-										private void check()
-										{
-											if (progress.incrementAndGet() == result.tracks.size())
-											{
-												hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
-														+ " Loaded **" + loadedCount.get() + "** additional tracks!")
-														.setComponents(Collections.emptyList()).queue();
-												// SpotifyTrackMatcher.logMatchingStatistics();
-											}
-										}
-									}));
-						}
-					}
-				}));
-	}
+                        AudioTrack[] resolvedTracks = new AudioTrack[totalTracks];
+                        AtomicInteger completedTasks = new AtomicInteger(0);
+                        AtomicInteger loadedCount = new AtomicInteger(0);
+
+                        ExecutorService executor = Executors.newFixedThreadPool(
+                                Math.min(8, Runtime.getRuntime().availableProcessors() * 2));
+
+                        for (int i = 1; i < totalTracks; i++)
+                        {
+                            final int index = i;
+                            final String sTitle = result.tracks.get(i);
+                            final String sArtist = (result.artists != null && result.artists.size() > i) ? result.artists.get(i) : "";
+                            final Integer sDurationMs = (result.durationMs != null && result.durationMs.size() > i) ? result.durationMs.get(i) : null;
+                            final String trackQuery = sTitle + " " + sArtist;
+
+                            executor.submit(() -> {
+                                try
+                                {
+                                    if (isCancelled(guildId, token))
+                                        return;
+
+                                    bot.getPlayerManager().loadItem("ytsearch:" + trackQuery, new AudioLoadResultHandler() {
+
+                                        @Override
+                                        public void trackLoaded(AudioTrack t)
+                                        {
+                                            resolvedTracks[index] = t;
+                                        }
+
+                                        @Override
+                                        public void playlistLoaded(AudioPlaylist p)
+                                        {
+                                            if (!p.getTracks().isEmpty())
+                                            {
+                                                AudioTrack bestMatch = SpotifyTrackMatcher
+                                                        .selectBestMatch(p.getTracks(), sTitle, sArtist, sDurationMs);
+                                                resolvedTracks[index] = bestMatch;
+                                            }
+                                        }
+
+                                        @Override
+                                        public void noMatches() {}
+
+                                        @Override
+                                        public void loadFailed(FriendlyException e) {}
+
+                                    }).get();
+                                }
+                                catch (Exception e)
+                                {
+                                    LOG.warn("Failed to search YouTube for: \"{}\"", trackQuery, e);
+                                }
+                                finally
+                                {
+                                    if (completedTasks.incrementAndGet() == remainingCount)
+                                    {
+                                        executor.shutdown();
+                                        try
+                                        {
+                                            if (isCancelled(guildId, token))
+                                            {
+                                                LOG.debug("Spotify bulk load cancelled prior to queueing for guild {}", guildId);
+                                                return;
+                                            }
+
+                                            for (int j = 1; j < totalTracks; j++)
+                                            {
+                                                if (isCancelled(guildId, token))
+                                                {
+                                                    LOG.debug("Spotify queueing interrupted by cancellation for guild {}", guildId);
+                                                    break;
+                                                }
+
+                                                AudioTrack track = resolvedTracks[j];
+                                                if (track == null)
+                                                {
+                                                    LOG.warn("No match found for index {}; skipping.", j);
+                                                    continue;
+                                                }
+
+                                                String searchQuery = result.tracks.get(j) + " " + result.artists.get(j);
+                                                
+                                                MusicService.TrackAddResult addResult = musicService.addTrackToQueue(
+                                                        guild, member, track, searchQuery, channel);
+
+                                                if (addResult != null)
+                                                {
+                                                    loadedCount.incrementAndGet();
+                                                }
+                                            }
+
+                                            if (!isCancelled(guildId, token))
+                                            {
+                                                hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
+                                                        + " Loaded **" + loadedCount.get() + "** additional tracks!")
+                                                        .setComponents(Collections.emptyList())
+                                                        .queue();
+                                            }
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            LOG.error("Error during Spotify bulk queueing completion for guild {}", guildId, ex);
+                                            hook.editOriginal(addMsg + "\n" + bot.getConfig().getWarning() 
+                                                    + " Finished processing with errors. Loaded **" + loadedCount.get() + "** tracks.")
+                                                    .setComponents(Collections.emptyList())
+                                                    .queue();
+                                        }
+                                        finally
+                                        {
+                                            ACTIVE_LOAD_TOKENS.remove(guildId, token);
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }));
+    }
 }
