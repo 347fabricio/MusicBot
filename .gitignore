@@ -26,9 +26,8 @@ Thumbs.db
 # Other
 *.lock
 
+# Python Virtual Environment & Caches
 .venv/
-.settings/
-.project
-.classpath
+
+# Build & Runtime Outputs
 .slashcommands.hash
-todo.md
