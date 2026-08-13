@@ -21,6 +21,22 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Bridge utility for invoking the local Python scraper script to extract Spotify metadata.
+ * <p>
+ * This class acts as the execution layer between the Java application and the external Python process
+ * ({@code scraper.py}). It handles subprocess execution, stream consumption, concurrency bounding,
+ * memory caching, and conversion of JSON payloads into type-safe {@link SpotifyResult} records.
+ * </p>
+ *
+ * <h2>Key Features:</h2>
+ * <ul>
+ *   <li><b>Concurrency Controls:</b> Uses a {@link Semaphore} to limit concurrent Python process invocations
+ *       and prevent system resource exhaustion or rate-limiting.</li>
+ *   <li><b>In-Memory Caching:</b> Integrates with {@link SpotifyCache} to store and serve previously resolved
+ *       metadata across bot requests.</li>
+ *   <li><b>Automatic Cache Pre-seeding:</b> When retrieving container entities (albums or playlists), individual
+ *       track records are automatically cached to optimize subsequent single-track lookups.</li>
+ *   <li><b>Async Execution:</b> Offers non-blocking lookups via {@link CompletableFuture} backed by a dedicated thread pool.</li>
+ * </ul>
  */
 public class SpotifyBridge
 {
@@ -38,9 +54,11 @@ public class SpotifyBridge
 	private static boolean enabled = false;
 
 	/**
-	 * Validates that the Python interpreter, scraper.py script extraction, and spotify_scraper dependency are present
-	 * and functional at startup.
-	 */
+     * Validates that the Python interpreter, {@code scraper.py} script extraction, and scraper dependencies
+     * are present and functional at startup by executing a pre-flight smoke test.
+     *
+     * @param config the bot configuration instance containing global settings
+     */
 	public static void init(BotConfig config)
     {
         try
@@ -76,8 +94,13 @@ public class SpotifyBridge
     }
 
 	/**
-	 * Executes the Python scraping process to retrieve metadata, checking JVM cache first.
-	 */
+     * Retrieves metadata for a given Spotify entity, checking the in-memory JVM cache before spawning
+     * an external Python scraping process.
+     *
+     * @param type the {@link SpotifyType} entity classification ({@code TRACK}, {@code EPISODE}, {@code PLAYLIST}, or {@code ALBUM})
+     * @param id   the 22-character Base62 Spotify resource identifier
+     * @return a {@link SpotifyResult} containing parsed track records on success, or an error payload on failure
+     */
 	public static SpotifyResult getTrackInfo(SpotifyType type, String id)
     {
         if (type == null)
@@ -105,44 +128,45 @@ public class SpotifyBridge
         return result;
     }
 
+	/**
+     * String overload for {@link #getTrackInfo(SpotifyType, String)} for backwards compatibility.
+     *
+     * @param typeStr the string representation of the Spotify entity type
+     * @param id      the 22-character Base62 Spotify resource identifier
+     * @return a {@link SpotifyResult} containing parsed track records on success, or an error payload on failure
+     */
     public static SpotifyResult getTrackInfo(String typeStr, String id)
     {
         return getTrackInfo(SpotifyType.fromString(typeStr), id);
     }
 
+    /**
+     * Checks whether the Spotify integration is active and verified.
+     *
+     * @return {@code true} if startup pre-flight checks passed; {@code false} otherwise
+     */
 	public static boolean isEnabled()
 	{
 		return enabled;
 	}
 
 	/**
-	 * Spawns an external Python process to scrape Spotify metadata via {@code scraper.py}.
-	 * 
-	 * <p>
-	 * This method executes the following workflow:
-	 * <ul>
-	 * <li>Acquires a permit from {@link #SCRAPER_SEMAPHORE} (max 4 parallel executions, 5s acquire timeout) to bound
-	 * system resource usage and mitigate Spotify rate limiting.</li>
-	 * <li>Executes {@code scraper.py} inside the local virtual environment ({@code .venv}) enforcing a 20-second hard
-	 * execution timeout.</li>
-	 * <li>Redirects stderr to stdout via {@link ProcessBuilder#redirectErrorStream(boolean)} to prevent stream
-	 * deadlocks and capture full Python tracebacks upon failure.</li>
-	 * <li>Parses the index-aligned batch JSON payload returned by Python, extracting track/episode titles,
-	 * artists/shows, duration arrays, and {@code track_ids}.</li>
-	 * <li>Handles both top-level execution errors (e.g. rate limits, timeout) and item-level lookup failures (e.g. 404
-	 * Not Found).</li>
-	 * <li>For container entities ({@code playlist} or {@code album}), automatically invokes
-	 * {@link #preseedTracks(List, List, List, List)} using the extracted {@code track_ids} to pre-seed JVM cache for
-	 * future single-track requests.</li>
-	 * <li>Guarantees semaphore permit release in a {@code finally} block regardless of execution outcome.</li>
-	 * </ul>
-	 *
-	 * @param type the Spotify entity type ({@code "track"}, {@code "episode"}, {@code "playlist"}, or {@code "album"})
-	 * @param id   the 22-character Spotify resource identifier
-	 * @return a {@link SpotifyResult} containing parallel lists of track titles, artist/show names, and duration
-	 *         values; returns a failed result if Python exits unexpectedly, times out, or concurrency permits are
-	 *         exhausted
-	 */
+     * Spawns an external Python subprocess to execute {@code scraper.py} and parse its output.
+     *
+     * <p><b>Execution Workflow:</b></p>
+     * <ol>
+     *   <li>Acquires a permit from {@link #SCRAPER_SEMAPHORE} (5-second timeout).</li>
+     *   <li>Executes {@code scraper.py} via {@link ProcessBuilder} with a 20-second hard timeout.</li>
+     *   <li>Asynchronously drains stdout and stderr streams to prevent subprocess deadlocks.</li>
+     *   <li>Parses standard single-line JSON payloads into {@link SpotifyResult} objects via {@link TrackPayloadParser}.</li>
+     *   <li>Pre-seeds individual track items into {@link SpotifyCache} for playlist and album responses.</li>
+     *   <li>Releases the semaphore permit in a {@code finally} block.</li>
+     * </ol>
+     *
+     * @param type the {@link SpotifyType} entity classification
+     * @param id   the 22-character Base62 Spotify resource identifier
+     * @return a {@link SpotifyResult} containing the outcome of the scraping operation
+     */
 	private static SpotifyResult executeScript(SpotifyType type, String id)
     {
         boolean permitAcquired = false;
@@ -268,17 +292,11 @@ public class SpotifyBridge
     }
 
 	/**
-	 * Pre-populates the in-memory JVM cache with individual track metadata returned from a batch playlist or album
-	 * resolution.
-	 * <p>
-	 * This eliminates the need to spawn a Python process if any of these tracks are subsequently requested as single
-	 * items.
-	 *
-	 * @param ids       List of Spotify track IDs matching the order of the items
-	 * @param tracks    List of track titles
-	 * @param artists   List of artist names
-	 * @param durations List of track durations in milliseconds
-	 */
+     * Pre-populates the in-memory JVM cache with individual track records returned from a batch playlist
+     * or album resolution.
+     *
+     * @param tracks the list of {@link SpotifyTrack} records to store in the single-track cache
+     */
 	public static void preseedTracks(List<SpotifyTrack> tracks)
     {
         if (tracks != null && !tracks.isEmpty())
@@ -287,14 +305,35 @@ public class SpotifyBridge
         }
     }
 
+	/**
+	 * Dedicated thread pool executor for dispatching asynchronous Spotify metadata lookup tasks.
+	 * <p>
+	 * Bounded by {@link #MAX_CONCURRENT_SCRAPERS} to prevent asynchronous calls from overloading system
+	 * thread resources. Configured with a custom thread factory that assigns recognizable thread names
+	 * ({@code "SpotifyBridge-Worker"}) for streamlined logging and stack trace diagnostics.
+	 */
     private static final ExecutorService BRIDGE_EXECUTOR = Executors.newFixedThreadPool(MAX_CONCURRENT_SCRAPERS,
             r -> new Thread(r, "SpotifyBridge-Worker"));
 
+    /**
+     * Asynchronously retrieves Spotify track metadata without blocking the calling thread.
+     *
+     * @param type the {@link SpotifyType} entity classification
+     * @param id   the 22-character Base62 Spotify resource identifier
+     * @return a {@link CompletableFuture} emitting a {@link SpotifyResult} upon completion
+     */
     public static CompletableFuture<SpotifyResult> getTrackInfoAsync(SpotifyType type, String id)
     {
         return CompletableFuture.supplyAsync(() -> getTrackInfo(type, id), BRIDGE_EXECUTOR);
     }
-
+    
+    /**
+     * String overload for {@link #getTrackInfoAsync(SpotifyType, String)}.
+     *
+     * @param typeStr the string representation of the Spotify entity type
+     * @param id      the 22-character Base62 Spotify resource identifier
+     * @return a {@link CompletableFuture} emitting a {@link SpotifyResult} upon completion
+     */
     public static CompletableFuture<SpotifyResult> getTrackInfoAsync(String typeStr, String id)
     {
         return getTrackInfoAsync(SpotifyType.fromString(typeStr), id);
