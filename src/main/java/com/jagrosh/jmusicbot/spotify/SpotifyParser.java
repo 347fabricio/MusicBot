@@ -14,7 +14,6 @@ public class SpotifyParser
 {
 	private static final Logger LOG = LoggerFactory.getLogger(SpotifyParser.class);
     private static final Pattern BASE62_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9]{22}$");
-    private static final Set<String> SUPPORTED_TYPES = Set.of("track", "episode", "playlist", "album");
 
     /**
      * Parses an input string for a valid Spotify URL or URI scheme and extracts its entity type and ID.
@@ -47,9 +46,10 @@ public class SpotifyParser
             String[] parts = input.split(":");
             if (parts.length >= 3)
             {
-                String type = parts[1].toLowerCase();
+                SpotifyType type = SpotifyType.fromString(parts[1]);
                 String id = parts[2];
-                if (SUPPORTED_TYPES.contains(type) && BASE62_ID_PATTERN.matcher(id).matches())
+
+                if (type != null && BASE62_ID_PATTERN.matcher(id).matches())
                 {
                     return new SpotifyData(type, id);
                 }
@@ -61,7 +61,7 @@ public class SpotifyParser
         }
         return null;
     }
-
+    
     /**
      * Handles HTTP/HTTPS Spotify URLs via {@link java.net.URI}.
      */
@@ -108,13 +108,13 @@ public class SpotifyParser
             String[] segments = path.split("/");
             for (int i = 0; i < segments.length - 1; i++)
             {
-                String segment = segments[i].toLowerCase();
-                if (SUPPORTED_TYPES.contains(segment))
+                SpotifyType type = SpotifyType.fromString(segments[i]);
+                if (type != null)
                 {
                     String possibleId = segments[i + 1];
                     if (BASE62_ID_PATTERN.matcher(possibleId).matches())
                     {
-                        return new SpotifyData(segment, possibleId);
+                        return new SpotifyData(type, possibleId);
                     }
                 }
             }
@@ -130,6 +130,5 @@ public class SpotifyParser
     /**
      * Immutable container representing an extracted Spotify entity type and ID.
      */
-    public record SpotifyData(String type, String id) {
-    }
+    public record SpotifyData(SpotifyType type, String id) {}
 }

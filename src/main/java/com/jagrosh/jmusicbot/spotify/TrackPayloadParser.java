@@ -1,92 +1,52 @@
 package com.jagrosh.jmusicbot.spotify;
 
 import com.fasterxml.jackson.databind.JsonNode;
-
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Utility for safely parsing index-aligned Spotify track metadata 
- * payloads from Jackson JsonNodes returned by the scraper script.
+ * Utility for parsing standardized parallel JSON arrays from scraper.py 
+ * into type-safe SpotifyTrack records.
  */
 public class TrackPayloadParser
 {
-    /**
-     * Container holding index-aligned lists of track metadata extracted from JSON.
-     */
-    public record ParsedTrackPayload(
-            List<String> ids,
-            List<String> tracks,
-            List<String> artists,
-            List<Integer> durations
-    )
-    {
-        public boolean isEmpty()
-        {
-            return tracks == null || tracks.isEmpty();
-        }
-    }
-
-    /**
-     * Safely extracts index-aligned track metadata lists from a Jackson JsonNode.
-     *
-     * @param itemNode Jackson JsonNode representing a track, album, or playlist response
-     * @return ParsedTrackPayload containing safely populated lists
-     */
-    public static ParsedTrackPayload parseTrackPayload(JsonNode itemNode)
+    public static SpotifyResult parseTrackPayload(JsonNode itemNode)
     {
         if (itemNode == null || !itemNode.isObject())
         {
-            return new ParsedTrackPayload(List.of(), List.of(), List.of(), List.of());
+            return SpotifyResult.failure("Invalid item node in JSON payload");
         }
 
         JsonNode tracksNode = itemNode.get("tracks");
         if (tracksNode == null || !tracksNode.isArray() || tracksNode.isEmpty())
         {
-            return new ParsedTrackPayload(List.of(), List.of(), List.of(), List.of());
+            return SpotifyResult.failure("No tracks found in item payload");
         }
 
-        int count = tracksNode.size();
-
-        JsonNode idsNode = itemNode.hasNonNull("track_ids") ? itemNode.get("track_ids") : itemNode.get("ids");
+        JsonNode idsNode = itemNode.has("track_ids") ? itemNode.get("track_ids") : itemNode.get("ids");
         JsonNode artistsNode = itemNode.get("artists");
-        JsonNode durationMsNode = itemNode.get("duration_ms");
+        JsonNode durationsNode = itemNode.get("duration_ms");
 
-        List<String> idsList = new ArrayList<>(count);
-        List<String> tracksList = new ArrayList<>(count);
-        List<String> artistsList = new ArrayList<>(count);
-        List<Integer> durationMsList = new ArrayList<>(count);
+        List<SpotifyTrack> parsedTracks = new ArrayList<>();
 
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < tracksNode.size(); i++)
         {
-            tracksList.add(getStringValue(tracksNode.get(i), ""));
+            String title = tracksNode.get(i).asText("");
+            String id = (idsNode != null && idsNode.size() > i) ? idsNode.get(i).asText("") : "";
+            String artist = (artistsNode != null && artistsNode.size() > i) ? artistsNode.get(i).asText("") : "";
+            long durationMs = (durationsNode != null && durationsNode.size() > i) ? durationsNode.get(i).asLong(0L) : 0L;
 
-            String idVal = (idsNode != null && idsNode.isArray() && i < idsNode.size())
-                    ? getStringValue(idsNode.get(i), "")
-                    : "";
-            idsList.add(idVal);
-
-            String artistVal = (artistsNode != null && artistsNode.isArray() && i < artistsNode.size())
-                    ? getStringValue(artistsNode.get(i), "")
-                    : "";
-            artistsList.add(artistVal);
-
-            int durationVal = (durationMsNode != null && durationMsNode.isArray() && i < durationMsNode.size())
-                    ? getIntValue(durationMsNode.get(i), 0)
-                    : 0;
-            durationMsList.add(durationVal);
+            if (!title.isBlank())
+            {
+                parsedTracks.add(new SpotifyTrack(id, title, artist, durationMs));
+            }
         }
 
-        return new ParsedTrackPayload(idsList, tracksList, artistsList, durationMsList);
-    }
+        if (parsedTracks.isEmpty())
+        {
+            return SpotifyResult.failure("Failed to parse valid tracks from arrays");
+        }
 
-    private static String getStringValue(JsonNode node, String defaultValue)
-    {
-        return (node != null && !node.isNull()) ? node.asText(defaultValue) : defaultValue;
-    }
-
-    private static int getIntValue(JsonNode node, int defaultValue)
-    {
-        return (node != null && !node.isNull()) ? node.asInt(defaultValue) : defaultValue;
+        return SpotifyResult.success(parsedTracks);
     }
 }

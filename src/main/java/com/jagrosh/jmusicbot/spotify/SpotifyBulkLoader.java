@@ -55,9 +55,9 @@ public class SpotifyBulkLoader
      * Resolves Spotify metadata queries against YouTube and adds the resulting tracks sequentially to the guild's queue.
      */
     public static void loadPlaylist(Bot bot, Guild guild, Member member, TextChannel channel,
-            SpotifyBridge.SpotifyResult result, MusicService musicService, InteractionHook hook)
+            SpotifyResult result, MusicService musicService, InteractionHook hook)
     {
-        if (result == null || result.tracks == null || result.tracks.isEmpty())
+        if (result == null || result.tracks() == null || result.tracks().isEmpty())
             return;
 
         long guildId = guild.getIdLong();
@@ -67,10 +67,11 @@ public class SpotifyBulkLoader
         String successEmoji = bot.getConfig().getSuccess();
         String warningEmoji = bot.getConfig().getWarning();
 
-        String firstTitle = result.tracks.get(0);
-        String firstArtist = (result.artists != null && !result.artists.isEmpty()) ? result.artists.get(0) : "";
-        Integer firstDurationMs = (result.durationMs != null && !result.durationMs.isEmpty()) ? result.durationMs.get(0) : null;
-        String firstQuery = firstTitle + " " + firstArtist;
+        SpotifyTrack firstTrack = result.tracks().get(0);
+        String firstTitle = firstTrack.title() != null ? firstTrack.title() : "";
+        String firstArtist = firstTrack.artist() != null ? firstTrack.artist() : "";
+        Integer firstDurationMs = firstTrack.durationMs() > 0 ? (int) firstTrack.durationMs() : null;
+        String firstQuery = (firstTitle + " " + firstArtist).trim();
 
         bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + firstQuery,
                 bot.getAudioLoadWrapper().wrap(firstQuery, new AudioLoadResultHandler() {
@@ -137,7 +138,7 @@ public class SpotifyBulkLoader
                         {
                             addMsg = FormatUtil.filter(warningEmoji + " " + musicService.formatTooLongError(track));
 
-                            if (result.tracks.size() == 1)
+                            if (result.tracks().size() == 1)
                             {
                                 ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
                                 hook.editOriginal(addMsg).setComponents(Collections.emptyList()).queue();
@@ -149,7 +150,7 @@ public class SpotifyBulkLoader
                             addMsg = FormatUtil.filter(successEmoji + " " + addResult.formattedMessage);
                         }
 
-                        if (result.tracks.size() == 1)
+                        if (result.tracks().size() == 1)
                         {
                             ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
                             hook.editOriginal(addMsg).setComponents(Collections.emptyList()).queue();
@@ -157,7 +158,7 @@ public class SpotifyBulkLoader
                         }
 
                         hook.editOriginal(
-                                addMsg + "\n🔄 Loading " + (result.tracks.size() - 1) + " additional tracks...")
+                                addMsg + "\n🔄 Loading " + (result.tracks().size() - 1) + " additional tracks...")
                                 .setComponents(Collections.emptyList()).queue();
 
                         loadRemainingTracks(addMsg, loadToken);
@@ -165,7 +166,7 @@ public class SpotifyBulkLoader
 
                     private void loadRemainingTracks(String addMsg, long token)
                     {
-                        int totalTracks = result.tracks.size();
+                        int totalTracks = result.tracks().size();
                         int remainingCount = totalTracks - 1;
 
                         if (remainingCount <= 0)
@@ -184,10 +185,11 @@ public class SpotifyBulkLoader
                         for (int i = 1; i < totalTracks; i++)
                         {
                             final int index = i;
-                            final String sTitle = result.tracks.get(i);
-                            final String sArtist = (result.artists != null && result.artists.size() > i) ? result.artists.get(i) : "";
-                            final Integer sDurationMs = (result.durationMs != null && result.durationMs.size() > i) ? result.durationMs.get(i) : null;
-                            final String trackQuery = sTitle + " " + sArtist;
+                            final SpotifyTrack st = result.tracks().get(i);
+                            final String sTitle = st.title() != null ? st.title() : "";
+                            final String sArtist = st.artist() != null ? st.artist() : "";
+                            final Integer sDurationMs = st.durationMs() > 0 ? (int) st.durationMs() : null;
+                            final String trackQuery = (sTitle + " " + sArtist).trim();
 
                             executor.submit(() -> {
                                 try
@@ -254,7 +256,8 @@ public class SpotifyBulkLoader
                                                     continue;
                                                 }
 
-                                                String searchQuery = result.tracks.get(j) + " " + result.artists.get(j);
+                                                SpotifyTrack queuedTrack = result.tracks().get(j);
+                                                String searchQuery = (queuedTrack.title() + " " + queuedTrack.artist()).trim();
                                                 
                                                 MusicService.TrackAddResult addResult = musicService.addTrackToQueue(
                                                         guild, member, track, searchQuery, channel);

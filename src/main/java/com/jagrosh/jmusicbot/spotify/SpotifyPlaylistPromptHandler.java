@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import com.jagrosh.jmusicbot.Bot;
 import com.jagrosh.jmusicbot.service.MusicService;
 import com.jagrosh.jmusicbot.service.MusicService.OutputAdapter;
-import com.jagrosh.jmusicbot.spotify.SpotifyBridge.SpotifyResult;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
@@ -33,126 +32,129 @@ import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
  */
 public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 {
-	private final Bot bot;
-	private final Guild guild;
-	private final Member member;
-	private final TextChannel channel;
-	private final OutputAdapter output;
-	private final SpotifyResult result;
+    private final Bot bot;
+    private final Guild guild;
+    private final Member member;
+    private final TextChannel channel;
+    private final OutputAdapter output;
+    private final SpotifyResult result;
 
-	private final String warningEmoji;
-	private final String errorEmoji;
+    private final String warningEmoji;
+    private final String errorEmoji;
 
-	private final MusicService musicService;
-	
-	private static final String ID_SPOTIFY_LOAD = "spotify:load_playlist";
-	private static final String ID_SPOTIFY_CANCEL = "spotify:cancel_playlist";
+    private final MusicService musicService;
+    
+    private static final String ID_SPOTIFY_LOAD = "spotify:load_playlist";
+    private static final String ID_SPOTIFY_CANCEL = "spotify:cancel_playlist";
 
-	private static final Logger LOG = LoggerFactory.getLogger(SpotifyPlaylistPromptHandler.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SpotifyPlaylistPromptHandler.class);
 
-	/**
-	 * Constructs a new handler to display an interactive confirmation prompt for loading Spotify playlists.
-	 */
-	public SpotifyPlaylistPromptHandler(Bot bot, Guild guild, Member member, TextChannel channel,
-			OutputAdapter output, SpotifyBridge.SpotifyResult result, MusicService musicService)
-	{
-		this.bot = bot;
-		this.guild = guild;
-		this.member = member;
-		this.channel = channel;
-		this.output = output;
-		this.result = result;
-		this.musicService = musicService;
+    /**
+     * Constructs a new handler to display an interactive confirmation prompt for loading Spotify playlists.
+     */
+    public SpotifyPlaylistPromptHandler(Bot bot, Guild guild, Member member, TextChannel channel,
+            OutputAdapter output, SpotifyResult result, MusicService musicService)
+    {
+        this.bot = bot;
+        this.guild = guild;
+        this.member = member;
+        this.channel = channel;
+        this.output = output;
+        this.result = result;
+        this.musicService = musicService;
 
-		this.warningEmoji = bot.getConfig().getWarning();
-		this.errorEmoji = bot.getConfig().getError();
-	}
+        this.warningEmoji = bot.getConfig().getWarning();
+        this.errorEmoji = bot.getConfig().getError();
+    }
 
-	@Override
-	public void trackLoaded(AudioTrack track)
-	{
-		processFirstTrack(track);
-	}
+    @Override
+    public void trackLoaded(AudioTrack track)
+    {
+        processFirstTrack(track);
+    }
 
-	@Override
-	public void playlistLoaded(AudioPlaylist playlist)
-	{
-		if (!playlist.getTracks().isEmpty())
-		{
-			processFirstTrack(playlist.getTracks().get(0));
-		} else
-		{
-			noMatches();
-		}
-	}
+    @Override
+    public void playlistLoaded(AudioPlaylist playlist)
+    {
+        if (!playlist.getTracks().isEmpty())
+        {
+            processFirstTrack(playlist.getTracks().get(0));
+        } 
+        else
+        {
+            noMatches();
+        }
+    }
 
-	@Override
-	public void noMatches()
-	{
-		output.editMessage(warningEmoji + " No results found for the first track.");
-	}
+    @Override
+    public void noMatches()
+    {
+        output.editMessage(warningEmoji + " No results found for the first track.");
+    }
 
-	@Override
-	public void loadFailed(FriendlyException exception)
-	{
-		output.editMessage(errorEmoji + " Error loading first track.");
-	}
+    @Override
+    public void loadFailed(FriendlyException exception)
+    {
+        output.editMessage(errorEmoji + " Error loading first track.");
+    }
 
-	/**
-	 * Evaluates the first resolved track and builds the confirmation button message wait loop.
-	 */
-	private void processFirstTrack(AudioTrack track)
-	{
-		if (musicService.isTooLong(track))
-		{
-			output.editMessage(FormatUtil.filter(warningEmoji + " Track too long."));
-			return;
-		}
+    /**
+     * Evaluates the first resolved track and builds the confirmation button message wait loop.
+     */
+    private void processFirstTrack(AudioTrack track)
+    {
+        if (musicService.isTooLong(track))
+        {
+            output.editMessage(FormatUtil.filter(warningEmoji + " Track too long."));
+            return;
+        }
 
-		String promptMsg = warningEmoji + " This track has a playlist of **" + result.tracks.size()
-				+ "** tracks attached.\n"
-				+ "⚠️ **Loading Spotify playlists may not always play the exact desired tracks!**\n"
-				+ "\t*Do you still want to load it?*";
+        int trackCount = (result != null && result.tracks() != null) ? result.tracks().size() : 0;
 
-		List<Button> buttons = new ArrayList<>();
-		buttons.add(Button.success(ID_SPOTIFY_LOAD, Emoji.fromUnicode("\uD83D\uDCE5")).withLabel("Load Playlist"));
-		buttons.add(Button.danger(ID_SPOTIFY_CANCEL, Emoji.fromUnicode("\uD83D\uDEAB")).withLabel("Cancel"));
+        String promptMsg = warningEmoji + " This track has a playlist of **" + trackCount
+                + "** tracks attached.\n"
+                + "⚠️ **Loading Spotify playlists may not always play the exact desired tracks!**\n"
+                + "\t*Do you still want to load it?*";
 
-		MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(promptMsg)
-				.setComponents(ActionRow.of(buttons));
+        List<Button> buttons = new ArrayList<>();
+        buttons.add(Button.success(ID_SPOTIFY_LOAD, Emoji.fromUnicode("\uD83D\uDCE5")).withLabel("Load Playlist"));
+        buttons.add(Button.danger(ID_SPOTIFY_CANCEL, Emoji.fromUnicode("\uD83D\uDEAB")).withLabel("Cancel"));
 
-		LOG.info("Action: PROMPT_CREATED | guild={} | user={} | totalTracks={}", guild.getId(),
-				member.getUser().getName(), result.tracks.size());
+        MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(promptMsg)
+                .setComponents(ActionRow.of(buttons));
 
-		output.editMessage(promptMsg, m -> {
-			m.editMessage(editBuilder.build()).queue(msg -> {
-				bot.getWaiter().waitForEvent(ButtonInteractionEvent.class, e -> e.getMessageId().equals(msg.getId())
-						&& e.getUser().getIdLong() == member.getIdLong()
-						&& (e.getComponentId().equals(ID_SPOTIFY_LOAD) || e.getComponentId().equals(ID_SPOTIFY_CANCEL)),
-						e -> {
-							if (e.getComponentId().equals(ID_SPOTIFY_CANCEL))
-							{
-								e.editMessage(promptMsg).setComponents().queue();
-								LOG.info("Action: CANCELLED | guild={} | user={}", guild.getId(),
-										member.getUser().getName());
-								return;
-							}
-							if (e.getComponentId().equals(ID_SPOTIFY_LOAD))
-							{
-								e.deferEdit().queue(hook -> {
-									hook.editOriginal("🔄 Loading " + result.tracks.size() + " Spotify tracks.")
-											.setComponents(Collections.emptyList())
-											.queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
-													channel, result, musicService, hook));
-								});
-								LOG.info("Action: APPROVED | guild={} | user={} | totalTracks={}", guild.getId(),
-										member.getUser().getName(), result.tracks.size());
-							}
-						}, 30, TimeUnit.SECONDS, () -> {
-							msg.editMessage(promptMsg).setComponents().queue();
-							LOG.info("Action: TIMEOUT | guild={} | user={}", guild.getId(), member.getUser().getName());
-						});
-			});
-		});
-	}
+        LOG.info("Action: PROMPT_CREATED | guild={} | user={} | totalTracks={}", guild.getId(),
+                member.getUser().getName(), trackCount);
+
+        output.editMessage(promptMsg, m -> {
+            m.editMessage(editBuilder.build()).queue(msg -> {
+                bot.getWaiter().waitForEvent(ButtonInteractionEvent.class, e -> e.getMessageId().equals(msg.getId())
+                        && e.getUser().getIdLong() == member.getIdLong()
+                        && (e.getComponentId().equals(ID_SPOTIFY_LOAD) || e.getComponentId().equals(ID_SPOTIFY_CANCEL)),
+                        e -> {
+                            if (e.getComponentId().equals(ID_SPOTIFY_CANCEL))
+                            {
+                                e.editMessage(promptMsg).setComponents().queue();
+                                LOG.info("Action: CANCELLED | guild={} | user={}", guild.getId(),
+                                        member.getUser().getName());
+                                return;
+                            }
+                            if (e.getComponentId().equals(ID_SPOTIFY_LOAD))
+                            {
+                                e.deferEdit().queue(hook -> {
+                                    hook.editOriginal("🔄 Loading " + trackCount + " Spotify tracks.")
+                                            .setComponents(Collections.emptyList())
+                                            .queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
+                                                    channel, result, musicService, hook));
+                                });
+                                LOG.info("Action: APPROVED | guild={} | user={} | totalTracks={}", guild.getId(),
+                                        member.getUser().getName(), trackCount);
+                            }
+                        }, 30, TimeUnit.SECONDS, () -> {
+                            msg.editMessage(promptMsg).setComponents().queue();
+                            LOG.info("Action: TIMEOUT | guild={} | user={}", guild.getId(), member.getUser().getName());
+                        });
+            });
+        });
+    }
 }

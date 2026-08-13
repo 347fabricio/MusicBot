@@ -1,59 +1,27 @@
 package com.jagrosh.jmusicbot.spotify;
 
-import com.jagrosh.jmusicbot.spotify.SpotifyBridge.SpotifyResult;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * In-memory JVM cache for Spotify metadata using standard Java concurrent data structures.
  */
 public class SpotifyCache
 {
-    private static final Logger LOG = LoggerFactory.getLogger(SpotifyCache.class);
-
-    public record CacheKey(String type, String id)
-    {
-        public CacheKey
-        {
-            Objects.requireNonNull(type, "Type must not be null");
-            Objects.requireNonNull(id, "ID must not be null");
-            type = type.trim().toLowerCase();
-            id = id.trim();
-        }
-    }
-
-    private record CacheEntry(SpotifyResult result, Instant expiresAt) {}
+	private static final Logger LOG = LoggerFactory.getLogger(SpotifyCache.class);
 
     private final Map<CacheKey, CacheEntry> cache = new ConcurrentHashMap<>();
-    private final long ttlMillis;
-    private final int maxEntries;
+    private final int maxEntries = 2000;
+    private final long ttlMillis = 24 * 60 * 60 * 1000L; // 24 Hours
 
-    /**
-     * Constructs a default SpotifyCache (2,000 entry limit, 24-hour expiration).
-     */
-    public SpotifyCache()
-    {
-        this(2000, 24, TimeUnit.HOURS);
-    }
-
-    /**
-     * Constructs a customized SpotifyCache.
-     */
-    public SpotifyCache(int maxEntries, long duration, TimeUnit timeUnit)
-    {
-        this.maxEntries = maxEntries;
-        this.ttlMillis = timeUnit.toMillis(duration);
-    }
+    private record CacheKey(String type, String id) {}
+    private record CacheEntry(SpotifyResult result, Instant expiresAt) {}
 
     /**
      * Retrieves a cached SpotifyResult if present and not expired.
@@ -85,7 +53,7 @@ public class SpotifyCache
      */
     public void put(String type, String id, SpotifyResult result)
     {
-        if (result == null || result.tracks == null || !result.success || result.tracks.isEmpty())
+    	if (result == null || !result.success() || result.tracks() == null || result.tracks().isEmpty())
         {
             return;
         }
@@ -104,42 +72,24 @@ public class SpotifyCache
     /**
      * Loops through playlist/album tracks and caches each track under its individual track ID.
      */
-    public void populateIndividualTrackCache(
-            List<String> ids, 
-            List<String> tracks, 
-            List<String> artists, 
-            List<Integer> durations)
+    public void populateIndividualTrackCache(List<SpotifyTrack> tracks)
     {
-        if (ids == null || tracks == null || artists == null || durations == null)
-        {
+        if (tracks == null || tracks.isEmpty())
             return;
-        }
 
         int cachedCount = 0;
-
-        for (int i = 0; i < tracks.size(); i++)
+        for (SpotifyTrack track : tracks)
         {
-            String trackId = (i < ids.size()) ? ids.get(i) : null;
-
-            if (trackId == null || trackId.isBlank())
-            {
+            if (track == null || track.id() == null || track.id().isBlank())
                 continue;
-            }
 
-            SpotifyResult singleTrackResult = new SpotifyResult(
-                    Collections.singletonList(tracks.get(i)),
-                    Collections.singletonList(artists.get(i)),
-                    Collections.singletonList(durations.get(i)),
-                    true
-            );
-
-            put("track", trackId, singleTrackResult);
+            SpotifyResult singleResult = SpotifyResult.success(List.of(track));
+            put(SpotifyType.TRACK.getValue(), track.id(), singleResult);
             cachedCount++;
         }
 
         LOG.info("Pre-populated JVM cache with {} individual tracks from playlist/album.", cachedCount);
     }
-
     public void clear()
     {
         cache.clear();

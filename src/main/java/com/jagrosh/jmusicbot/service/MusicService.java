@@ -30,6 +30,7 @@ import com.jagrosh.jmusicbot.settings.Settings;
 import com.jagrosh.jmusicbot.spotify.SpotifyBridge;
 import com.jagrosh.jmusicbot.spotify.SpotifyParser;
 import com.jagrosh.jmusicbot.spotify.SpotifyPlaylistPromptHandler;
+import com.jagrosh.jmusicbot.spotify.SpotifyTrack;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
 import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
@@ -307,49 +308,55 @@ public class MusicService
 
         SpotifyParser.SpotifyData spotifyData = SpotifyParser.parse(args);
         
-		if (spotifyData != null)
-		{
-			SpotifyBridge.getTrackInfoAsync(spotifyData.type(), spotifyData.id()).thenAcceptAsync(result -> {
-				if (result != null && result.success && result.tracks != null && !result.tracks.isEmpty())
-				{
-					String query = result.tracks.get(0) + " " + result.artists.get(0);
-					String ytQuery = "ytsearch:" + query;
+        if (spotifyData != null)
+        {
+            SpotifyBridge.getTrackInfoAsync(spotifyData.type(), spotifyData.id()).thenAcceptAsync(result -> {
+                if (result != null && result.success() && result.tracks() != null && !result.tracks().isEmpty())
+                {
+                    SpotifyTrack firstTrack = result.tracks().get(0);
+                    String title = firstTrack.title() != null ? firstTrack.title() : "";
+                    String artist = firstTrack.artist() != null ? firstTrack.artist() : "";
+                    String query = (title + " " + artist).trim();
+                    String ytQuery = "ytsearch:" + query;
 
-					if (result.tracks.size() > 1)
-					{
-						bot.getPlayerManager().loadItemOrdered(guild, ytQuery, bot.getAudioLoadWrapper().wrap(ytQuery,
-								new SpotifyPlaylistPromptHandler(bot, guild, member, channel, output, result, this)));
-					} else
-					{
-						bot.getPlayerManager().loadItemOrdered(guild, ytQuery,
-								bot.getAudioLoadWrapper().wrap(ytQuery, new AudioLoadResultHandlers.PlayResultHandler(
-										this, bot, output, guild, member, ytQuery, true, channel) {
-								}));
-					}
-				} else
-				{
-					if (!SpotifyBridge.isEnabled())
-					{
-						output.replyError(
-								"Spotify integration is currently disabled (Python environment not available).");
-					} else
-					{
-						output.replyError(
-								"Could not retrieve Spotify metadata for this link. Please check if the URL is valid or public.");
-					}
-				}
-			}).exceptionally(throwable -> {
-				LOG.error("Failed to process Spotify track info asynchronously", throwable);
-				output.replyError("An error occurred while resolving the Spotify link.");
-				return null;
-			});
-		} else
-		{
-			bot.getPlayerManager().loadItemOrdered(guild, args,
-					bot.getAudioLoadWrapper().wrap(args, new AudioLoadResultHandlers.PlayResultHandler(this, bot,
-							output, guild, member, args, false, channel)));
-		}
-    }
+                    if (result.tracks().size() > 1)
+                    {
+                        bot.getPlayerManager().loadItemOrdered(guild, ytQuery, bot.getAudioLoadWrapper().wrap(ytQuery,
+                                new SpotifyPlaylistPromptHandler(bot, guild, member, channel, output, result, this)));
+                    } 
+                    else
+                    {
+                        bot.getPlayerManager().loadItemOrdered(guild, ytQuery,
+                                bot.getAudioLoadWrapper().wrap(ytQuery, new AudioLoadResultHandlers.PlayResultHandler(
+                                        this, bot, output, guild, member, ytQuery, true, channel) {
+                                }));
+                    }
+                } 
+                else
+                {
+                    if (!SpotifyBridge.isEnabled())
+                    {
+                        output.replyError(
+                                "Spotify integration is currently disabled (Python environment not available).");
+                    } 
+                    else
+                    {
+                        output.replyError(
+                                "Could not retrieve Spotify metadata for this link. Please check if the URL is valid or public.");
+                    }
+                }
+            }).exceptionally(throwable -> {
+                LOG.error("Failed to process Spotify track info asynchronously", throwable);
+                output.replyError("An error occurred while resolving the Spotify link.");
+                return null;
+            });
+        } 
+        else
+        {
+            bot.getPlayerManager().loadItemOrdered(guild, args,
+                    bot.getAudioLoadWrapper().wrap(args, new AudioLoadResultHandlers.PlayResultHandler(this, bot,
+                            output, guild, member, args, false, channel)));
+        }    }
 
 
     public void previous(Guild guild, Member member, OutputAdapter output)
