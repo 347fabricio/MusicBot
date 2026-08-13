@@ -11,8 +11,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.jagrosh.jmusicbot.Bot;
+import com.jagrosh.jmusicbot.audio.AudioHandler;
+import com.jagrosh.jmusicbot.audio.QueuedTrack;
+import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.service.MusicService;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
+import com.jagrosh.jmusicbot.utils.PlaylistExecutionTimer;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
@@ -145,18 +149,17 @@ public class SpotifyBulkLoader
                     public void noMatches()
                     {
                         ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
-                        hook.editOriginal(bot.getConfig().getWarning()
-                                + " Could not find a match for the first track: **" + firstTitle + "**")
-                                .setComponents(Collections.emptyList()).queue();
+						hook.editOriginal(
+								warningEmoji + " Could not find a match for the first track: **" + firstTitle + "**")
+								.setComponents(Collections.emptyList()).queue();
                     }
 
                     @Override
                     public void loadFailed(FriendlyException e)
                     {
                         ACTIVE_LOAD_TOKENS.remove(guildId, loadToken);
-                        hook.editOriginal(
-                                bot.getConfig().getWarning() + " Failed to load first track: " + e.getMessage())
-                                .setComponents(Collections.emptyList()).queue();
+						hook.editOriginal(warningEmoji + " Failed to load first track: " + e.getMessage())
+								.setComponents(Collections.emptyList()).queue();
                     }
 
                     private void processFirstTrackAndContinue(AudioTrack track)
@@ -200,14 +203,18 @@ public class SpotifyBulkLoader
                             hook.editOriginal(addMsg).setComponents(Collections.emptyList()).queue();
                             return;
                         }
-
-                        hook.editOriginal(
-                                addMsg + "\n🔄 Loading " + (result.tracks().size() - 1) + " additional tracks...")
-                                .setComponents(Collections.emptyList()).queue();
+                        
+						hook.editOriginal(
+								addMsg + "\n🔄 Loading **" + (result.tracks().size() - 1) + "** additional tracks.")
+								.setComponents(Collections.emptyList()).queue();
 
                         loadRemainingTracks(addMsg, loadToken);
                     }
 
+                    /**
+                     * Executes parallel YouTube searches for the remaining playlist items and streams resolved 
+                     * tracks into the queue sequentially while maintaining strict playlist order and measuring timing metrics.
+                     */
                     private void loadRemainingTracks(String addMsg, long token)
                     {
                         int totalTracks = result.tracks().size();
@@ -218,13 +225,55 @@ public class SpotifyBulkLoader
                             ACTIVE_LOAD_TOKENS.remove(guildId, token);
                             return;
                         }
+                        
+                        PlaylistExecutionTimer timer = PlaylistExecutionTimer.start();
 
                         AudioTrack[] resolvedTracks = new AudioTrack[totalTracks];
+                        boolean[] completedIndices = new boolean[totalTracks];
+
                         AtomicInteger completedTasks = new AtomicInteger(0);
                         AtomicInteger loadedCount = new AtomicInteger(0);
+                        AtomicInteger nextTrackIndex = new AtomicInteger(1);
 
-                        ExecutorService executor = Executors.newFixedThreadPool(
-                                Math.min(8, Runtime.getRuntime().availableProcessors() * 2));
+                        ExecutorService executor = Executors.newFixedThreadPool(3);
+
+                        AudioHandler handler = (AudioHandler) guild.getAudioManager().getSendingHandler();
+                        if (handler != null)
+                        {
+                            handler.setLastReason(member.getUser().getName() + " added a Spotify playlist.");
+                        }
+
+                        Runnable drainReadyTracks = () -> {
+                            synchronized (resolvedTracks)
+                            {
+                                while (nextTrackIndex.get() < totalTracks)
+                                {
+                                    int curr = nextTrackIndex.get();
+                                    if (!completedIndices[curr])
+                                    {
+                                        break;
+                                    }
+
+                                    if (!isCancelled(guildId, token))
+                                    {
+                                        AudioTrack track = resolvedTracks[curr];
+                                        if (track != null && !musicService.isTooLong(track) && handler != null)
+                                        {
+                                            SpotifyTrack queuedTrack = result.tracks().get(curr);
+                                            String searchQuery = (queuedTrack.title() + " " + queuedTrack.artist()).trim();
+
+                                            handler.addTrack(new QueuedTrack(track,
+                                                    new RequestMetadata(member.getUser(),
+                                                            new RequestMetadata.RequestInfo(searchQuery, track.getInfo().uri),
+                                                            channel.getIdLong())));
+                                            loadedCount.incrementAndGet();
+                                        }
+                                    }
+
+                                    nextTrackIndex.incrementAndGet();
+                                }
+                            }
+                        };
 
                         for (int i = 1; i < totalTracks; i++)
                         {
@@ -274,59 +323,30 @@ public class SpotifyBulkLoader
                                 }
                                 finally
                                 {
+                                    synchronized (resolvedTracks)
+                                    {
+                                        completedIndices[index] = true;
+                                    }
+
+                                    drainReadyTracks.run();
+
                                     if (completedTasks.incrementAndGet() == remainingCount)
                                     {
                                         executor.shutdown();
                                         try
                                         {
-                                            if (isCancelled(guildId, token))
-                                            {
-                                                LOG.debug("Spotify bulk load cancelled prior to queueing for guild {}", guildId);
-                                                return;
-                                            }
-
-                                            for (int j = 1; j < totalTracks; j++)
-                                            {
-                                                if (isCancelled(guildId, token))
-                                                {
-                                                    LOG.debug("Spotify queueing interrupted by cancellation for guild {}", guildId);
-                                                    break;
-                                                }
-
-                                                AudioTrack track = resolvedTracks[j];
-                                                if (track == null)
-                                                {
-                                                    LOG.warn("No match found for index {}; skipping.", j);
-                                                    continue;
-                                                }
-
-                                                SpotifyTrack queuedTrack = result.tracks().get(j);
-                                                String searchQuery = (queuedTrack.title() + " " + queuedTrack.artist()).trim();
-                                                
-                                                MusicService.TrackAddResult addResult = musicService.addTrackToQueue(
-                                                        guild, member, track, searchQuery, channel);
-
-                                                if (addResult != null)
-                                                {
-                                                    loadedCount.incrementAndGet();
-                                                }
-                                            }
-
+                                        	LOG.info("Finished Spotify bulk load for guild {}: {}", 
+                                                    guildId, timer.getFormattedSummary(loadedCount.get()));
                                             if (!isCancelled(guildId, token))
                                             {
-                                                hook.editOriginal(addMsg + "\n" + bot.getConfig().getSuccess()
-                                                        + " Loaded **" + loadedCount.get() + "** additional tracks!")
-                                                        .setComponents(Collections.emptyList())
-                                                        .queue();
+												hook.editOriginal(addMsg + "\n" + successEmoji + " Loaded **"
+														+ loadedCount.get() + "** additional tracks!")
+														.setComponents(Collections.emptyList()).queue();
                                             }
                                         }
                                         catch (Exception ex)
                                         {
                                             LOG.error("Error during Spotify bulk queueing completion for guild {}", guildId, ex);
-                                            hook.editOriginal(addMsg + "\n" + bot.getConfig().getWarning() 
-                                                    + " Finished processing with errors. Loaded **" + loadedCount.get() + "** tracks.")
-                                                    .setComponents(Collections.emptyList())
-                                                    .queue();
                                         }
                                         finally
                                         {

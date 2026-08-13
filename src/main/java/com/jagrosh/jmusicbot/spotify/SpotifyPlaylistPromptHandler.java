@@ -127,10 +127,9 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 
         int trackCount = (result != null && result.tracks() != null) ? result.tracks().size() : 0;
 
-        String promptMsg = warningEmoji + " This track has a playlist of **" + trackCount
-                + "** tracks attached.\n"
-                + "⚠️ **Loading Spotify playlists may not always play the exact desired tracks!**\n"
-                + "\t*Do you still want to load it?*";
+        String promptMsg = warningEmoji + " This track has a playlist of **" + trackCount + "** tracks attached.\n"
+                + "⚠️ **Spotify playlists may not load every track, and matches may not always be exact!**\n"
+                + "\t*Only successfully found tracks will be added. Do you still want to load it?*";
 
         List<Button> buttons = new ArrayList<>();
         buttons.add(Button.success(ID_SPOTIFY_LOAD, Emoji.fromUnicode("\uD83D\uDCE5")).withLabel("Load Playlist"));
@@ -157,11 +156,11 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
                             }
                             if (e.getComponentId().equals(ID_SPOTIFY_LOAD))
                             {
-                                e.deferEdit().queue(hook -> {
-                                    hook.editOriginal("🔄 Loading " + trackCount + " Spotify tracks.")
-                                            .setComponents(Collections.emptyList())
-                                            .queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
-                                                    channel, result, musicService, hook));
+								e.deferEdit().queue(hook -> {
+									hook.editOriginal("🔄 Loading **" + result.tracks().size() + "** additional tracks.")
+											.setComponents(Collections.emptyList())
+											.queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
+													channel, result, musicService, hook));
                                 });
                                 LOG.info("Action: APPROVED | guild={} | user={} | totalTracks={}", guild.getId(),
                                         member.getUser().getName(), trackCount);

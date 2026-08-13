@@ -28,6 +28,7 @@ import com.jagrosh.jmusicbot.settings.QueueType;
 import com.jagrosh.jmusicbot.settings.RepeatMode;
 import com.jagrosh.jmusicbot.settings.Settings;
 import com.jagrosh.jmusicbot.spotify.SpotifyBridge;
+import com.jagrosh.jmusicbot.spotify.SpotifyBulkLoader;
 import com.jagrosh.jmusicbot.spotify.SpotifyParser;
 import com.jagrosh.jmusicbot.spotify.SpotifyPlaylistPromptHandler;
 import com.jagrosh.jmusicbot.spotify.SpotifyTrack;
@@ -573,6 +574,7 @@ public class MusicService
         AudioHandler handler = getHandler(guild);
         handler.stopAndClearQueuePreserveHistory();
         guild.getAudioManager().closeAudioConnection();
+        SpotifyBulkLoader.cancelLoading(guild.getIdLong());
         output.editNoMusic(handler);
     }
 
@@ -589,6 +591,7 @@ public class MusicService
         AudioHandler handler = getHandler(guild);
         handler.stopAndClearQueuePreserveHistory();
         guild.getAudioManager().closeAudioConnection();
+        SpotifyBulkLoader.cancelLoading(guild.getIdLong());
 
         LOG.debug("Audio connection closed: guild={}", guild.getId());
     }
