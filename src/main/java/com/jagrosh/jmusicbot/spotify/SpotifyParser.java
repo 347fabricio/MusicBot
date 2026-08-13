@@ -1,14 +1,18 @@
 package com.jagrosh.jmusicbot.spotify; // Adjust package name as per your project structure
 
 import java.net.URI;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Utility for safely parsing Spotify URLs and URI schemes to extract entity types and 22-character Base62 IDs.
+ * Utility class for parsing and extracting metadata identifiers from Spotify URLs and URI schemes.
+ * <p>
+ * Handles both native Spotify URI patterns (e.g., {@code spotify:track:<id>}) and HTTP/HTTPS web URLs
+ * (e.g., {@code https://open.spotify.com/track/<id>}). Extracted entity identifiers are strictly validated
+ * against standard 22-character Base62 pattern constraints.
+ * </p>
  */
 public class SpotifyParser
 {
@@ -16,10 +20,14 @@ public class SpotifyParser
     private static final Pattern BASE62_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9]{22}$");
 
     /**
-     * Parses an input string for a valid Spotify URL or URI scheme and extracts its entity type and ID.
+     * Parses a raw input string to determine if it represents a valid Spotify URL or URI scheme.
+     * <p>
+     * Automatically strips leading/trailing whitespace and delegates to internal URI or URL parsing routines.
+     * </p>
      *
-     * @param args Raw input string (URL, URI, or command arguments)
-     * @return {@link SpotifyData} containing the type and ID, or {@code null} if input is invalid
+     * @param args the raw input string containing a Spotify URL, URI, or command argument
+     * @return a {@link SpotifyData} record holding the resolved {@link SpotifyType} and ID,
+     *         or {@code null} if the input is blank, unparseable, or invalid
      */
     public static SpotifyData parse(String args)
     {
@@ -37,7 +45,14 @@ public class SpotifyParser
     }
 
     /**
-     * Handles Spotify URI format (e.g., spotify:track:4uLU61m3OFy3A2Tf3L1A22).
+     * Parses native Spotify URI schemes (e.g., {@code spotify:track:4uLU61m3OFy3A2Tf3L1A22}).
+     * <p>
+     * Splits the scheme by colon delimiters, maps the second segment to a {@link SpotifyType},
+     * and verifies that the resource ID matches the expected 22-character Base62 format.
+     * </p>
+     *
+     * @param input the sanitized Spotify URI string
+     * @return a populated {@link SpotifyData} instance if valid; {@code null} otherwise
      */
     private static SpotifyData parseUri(String input)
     {
@@ -63,7 +78,15 @@ public class SpotifyParser
     }
     
     /**
-     * Handles HTTP/HTTPS Spotify URLs via {@link java.net.URI}.
+     * Parses HTTP and HTTPS Spotify web URLs (e.g., {@code https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M}).
+     * <p>
+     * Validates protocol schemes and enforces host verification against official domain bounds
+     * ({@code spotify.com} or its subdomains). Scans URL path segments sequentially to find a valid
+     * {@link SpotifyType} followed immediately by a 22-character Base62 resource ID.
+     * </p>
+     *
+     * @param input the sanitized Spotify web URL string
+     * @return a populated {@link SpotifyData} instance if valid; {@code null} otherwise
      */
     private static SpotifyData parseUrl(String input)
     {
@@ -128,7 +151,10 @@ public class SpotifyParser
     }
 
     /**
-     * Immutable container representing an extracted Spotify entity type and ID.
+     * Immutable container representing an extracted Spotify entity target.
+     *
+     * @param type the resolved {@link SpotifyType} entity classification
+     * @param id   the 22-character Base62 resource identifier
      */
     public record SpotifyData(SpotifyType type, String id) {}
 }

@@ -27,8 +27,9 @@ import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 
 /**
- * Handler responsible for prompting users with interactive Discord components (buttons)
- * before enqueueing multi-track Spotify playlists.
+ * Intercepts the resolution of the first track in a Spotify container to present confirmation buttons ("Load Playlist" / "Cancel"),
+ * mitigating unintended bulk enqueueing. Listens for user button interactions via JDA EventWaiter before dispatching
+ * the bulk loading process to {@link SpotifyBulkLoader}.
  */
 public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
 {
@@ -50,7 +51,15 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
     private static final Logger LOG = LoggerFactory.getLogger(SpotifyPlaylistPromptHandler.class);
 
     /**
-     * Constructs a new handler to display an interactive confirmation prompt for loading Spotify playlists.
+     * Constructs a new prompt handler instance for an interactive Spotify playlist load request.
+     *
+     * @param bot          the core bot instance providing configuration and event waiters
+     * @param guild        the target Discord guild
+     * @param member       the guild member who initiated the command
+     * @param channel      the text channel where prompt messages are posted
+     * @param output       the message output adapter for rendering feedback
+     * @param result       the parsed {@link SpotifyResult} containing resolved tracks
+     * @param musicService the music management service handling audio state
      */
     public SpotifyPlaylistPromptHandler(Bot bot, Guild guild, Member member, TextChannel channel,
             OutputAdapter output, SpotifyResult result, MusicService musicService)
@@ -67,6 +76,7 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
         this.errorEmoji = bot.getConfig().getError();
     }
 
+    
     @Override
     public void trackLoaded(AudioTrack track)
     {
@@ -99,7 +109,13 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
     }
 
     /**
-     * Evaluates the first resolved track and builds the confirmation button message wait loop.
+     * Evaluates the first resolved track against duration constraints and displays the interactive confirmation prompt.
+     * <p>
+     * Constructs Discord button components ("Load Playlist" and "Cancel") and registers an asynchronous event waiter listener
+     * using JDA EventWaiter. If approved, delegates bulk queueing to {@link SpotifyBulkLoader}.
+     * </p>
+     *
+     * @param track the primary resolved {@link AudioTrack}
      */
     private void processFirstTrack(AudioTrack track)
     {
