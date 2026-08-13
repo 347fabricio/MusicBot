@@ -24,6 +24,8 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.emoji.Emoji;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
+import net.dv8tion.jda.api.exceptions.ErrorHandler;
+import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 
 /**
@@ -117,59 +119,60 @@ public class SpotifyPlaylistPromptHandler implements AudioLoadResultHandler
      *
      * @param track the primary resolved {@link AudioTrack}
      */
-    private void processFirstTrack(AudioTrack track)
-    {
-        if (musicService.isTooLong(track))
-        {
-            output.editMessage(FormatUtil.filter(warningEmoji + " Track too long."));
-            return;
-        }
+	private void processFirstTrack(AudioTrack track)
+	{
+		if (musicService.isTooLong(track))
+		{
+			output.editMessage(FormatUtil.filter(warningEmoji + " Track too long."));
+			return;
+		}
 
-        int trackCount = (result != null && result.tracks() != null) ? result.tracks().size() : 0;
+		int trackCount = (result != null && result.tracks() != null) ? result.tracks().size() : 0;
 
-        String promptMsg = warningEmoji + " This track has a playlist of **" + trackCount + "** tracks attached.\n"
-                + "⚠️ **Spotify playlists may not load every track, and matches may not always be exact!**\n"
-                + "\t*Only successfully found tracks will be added. Do you still want to load it?*";
+		String promptMsg = warningEmoji + " This track has a playlist of **" + trackCount + "** tracks attached.\n"
+				+ "⚠️ **Spotify playlists may not load every track, and matches may not always be exact!**\n"
+				+ "\t*Only successfully found tracks will be added. Do you still want to load it?*";
 
-        List<Button> buttons = new ArrayList<>();
-        buttons.add(Button.success(ID_SPOTIFY_LOAD, Emoji.fromUnicode("\uD83D\uDCE5")).withLabel("Load Playlist"));
-        buttons.add(Button.danger(ID_SPOTIFY_CANCEL, Emoji.fromUnicode("\uD83D\uDEAB")).withLabel("Cancel"));
+		List<Button> buttons = new ArrayList<>();
+		buttons.add(Button.success(ID_SPOTIFY_LOAD, Emoji.fromUnicode("\uD83D\uDCE5")).withLabel("Load Playlist"));
+		buttons.add(Button.danger(ID_SPOTIFY_CANCEL, Emoji.fromUnicode("\uD83D\uDEAB")).withLabel("Cancel"));
 
-        MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(promptMsg)
-                .setComponents(ActionRow.of(buttons));
+		MessageEditBuilder editBuilder = new MessageEditBuilder().setContent(promptMsg)
+				.setComponents(ActionRow.of(buttons));
 
-        LOG.info("Action: PROMPT_CREATED | guild={} | user={} | totalTracks={}", guild.getId(),
-                member.getUser().getName(), trackCount);
+		LOG.info("Action: PROMPT_CREATED | guild={} | user={} | totalTracks={}", guild.getId(),
+				member.getUser().getName(), trackCount);
 
-        output.editMessage(promptMsg, m -> {
-            m.editMessage(editBuilder.build()).queue(msg -> {
-                bot.getWaiter().waitForEvent(ButtonInteractionEvent.class, e -> e.getMessageId().equals(msg.getId())
-                        && e.getUser().getIdLong() == member.getIdLong()
-                        && (e.getComponentId().equals(ID_SPOTIFY_LOAD) || e.getComponentId().equals(ID_SPOTIFY_CANCEL)),
-                        e -> {
-                            if (e.getComponentId().equals(ID_SPOTIFY_CANCEL))
-                            {
-                                e.editMessage(promptMsg).setComponents().queue();
-                                LOG.info("Action: CANCELLED | guild={} | user={}", guild.getId(),
-                                        member.getUser().getName());
-                                return;
-                            }
-                            if (e.getComponentId().equals(ID_SPOTIFY_LOAD))
-                            {
+		output.editMessage(promptMsg, m -> {
+			m.editMessage(editBuilder.build()).queue(msg -> {
+				bot.getWaiter().waitForEvent(ButtonInteractionEvent.class, e -> e.getMessageId().equals(msg.getId())
+						&& e.getUser().getIdLong() == member.getIdLong()
+						&& (e.getComponentId().equals(ID_SPOTIFY_LOAD) || e.getComponentId().equals(ID_SPOTIFY_CANCEL)),
+						e -> {
+							if (e.getComponentId().equals(ID_SPOTIFY_CANCEL))
+							{
+								msg.delete().queue(null, new ErrorHandler().ignore(ErrorResponse.UNKNOWN_MESSAGE));
+								LOG.info("Action: CANCELLED | guild={} | user={}", guild.getId(),
+										member.getUser().getName());
+								return;
+							}
+							if (e.getComponentId().equals(ID_SPOTIFY_LOAD))
+							{
 								e.deferEdit().queue(hook -> {
-									hook.editOriginal("🔄 Loading **" + result.tracks().size() + "** additional tracks.")
-											.setComponents(Collections.emptyList())
-											.queue(message -> SpotifyBulkLoader.loadPlaylist(bot, guild, member,
-													channel, result, musicService, hook));
-                                });
-                                LOG.info("Action: APPROVED | guild={} | user={} | totalTracks={}", guild.getId(),
-                                        member.getUser().getName(), trackCount);
-                            }
-                        }, 30, TimeUnit.SECONDS, () -> {
-                            msg.editMessage(promptMsg).setComponents().queue();
-                            LOG.info("Action: TIMEOUT | guild={} | user={}", guild.getId(), member.getUser().getName());
-                        });
-            });
-        });
-    }
+									hook.editOriginal(
+											"🔄 Loading **" + result.tracks().size() + "** additional tracks.")
+											.setComponents(Collections.emptyList()).queue();
+									SpotifyBulkLoader.loadPlaylist(bot, guild, member, channel, result, musicService,
+											hook);
+								});
+								LOG.info("Action: APPROVED | guild={} | user={} | totalTracks={}", guild.getId(),
+										member.getUser().getName(), trackCount);
+							}
+						}, 30, TimeUnit.SECONDS, () -> {
+							msg.delete().queue(null, new ErrorHandler().ignore(ErrorResponse.UNKNOWN_MESSAGE));
+							LOG.info("Action: TIMEOUT | guild={} | user={}", guild.getId(), member.getUser().getName());
+						});
+			});
+		});
+	}
 }
