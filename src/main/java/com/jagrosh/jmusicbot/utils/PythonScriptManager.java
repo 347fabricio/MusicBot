@@ -11,7 +11,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Manager utility for locating Python binaries and managing script extraction.
+ * Manager utility for locating Python interpreter binaries and managing embedded script extraction.
+ * <p>
+ * Handles extraction and version synchronization of the embedded {@code scraper.py} script from JAR resources
+ * to the working directory using SHA-256 hash verification. Provides OS-aware resolution of Python executables,
+ * prioritizing custom user configuration, system properties, local virtual environments ({@code .venv}),
+ * and system fallback paths.
+ * </p>
  */
 public class PythonScriptManager
 {
@@ -22,9 +28,13 @@ public class PythonScriptManager
     private static File scriptFile;
 
     /**
-     * Extracts {@code scrapper.py} from JAR resources to disk if missing or outdated based on SHA-256 hash comparison.
-     * 
-     * @return {@code true} if the script is extracted and ready; {@code false} if extraction failed
+     * Extracts the embedded {@code scraper.py} script from JAR resources to the working directory.
+     * <p>
+     * Performs SHA-256 hash validation between the embedded JAR resource and any existing local target file.
+     * If the local file is missing or contains a version mismatch, it is atomically updated/extracted.
+     * </p>
+     *
+     * @return {@code true} if the script is extracted, up to date, and ready for execution; {@code false} if extraction fails
      */
     public static synchronized boolean initScript()
     {
@@ -76,9 +86,12 @@ public class PythonScriptManager
     }
 
     /**
-     * Retrieves the extracted {@code scrapper.py} file instance, initializing it if necessary.
-     * 
-     * @return The {@link File} pointer to {@code scrapper.py}, or {@code null} if extraction failed
+     * Retrieves the {@link File} pointer to the extracted {@code scraper.py} script on disk.
+     * <p>
+     * Lazily invokes {@link #initScript()} if the file reference is null or does not exist on disk.
+     * </p>
+     *
+     * @return a {@link File} pointing to {@code scraper.py}, or {@code null} if script extraction failed
      */
     public static synchronized File getScriptFile()
     {
@@ -92,6 +105,13 @@ public class PythonScriptManager
         return scriptFile;
     }
 
+    /**
+     * Computes a lower-case hexadecimal SHA-256 checksum string for a byte array payload.
+     *
+     * @param data the byte array input to digest
+     * @return the 64-character hexadecimal SHA-256 hash string
+     * @throws NoSuchAlgorithmException if the SHA-256 MessageDigest algorithm is unavailable in the JVM environment
+     */
     private static String calculateSha256(byte[] data) throws NoSuchAlgorithmException 
     {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -110,15 +130,19 @@ public class PythonScriptManager
     }
     
     /**
-     * Resolves the Python executable path using the following priority:
+     * Resolves the path to the Python interpreter executable using a prioritized fallback chain.
+     * <p>
+     * <b>Resolution Priority:</b>
      * <ol>
-     *   <li>Custom path specified via configuration/system property (if set)</li>
-     *   <li>Local virtual environment binary based on OS ({@code .venv/bin/python} or {@code .venv\Scripts\python.exe})</li>
-     *   <li>System fallback binary ({@code python3} on Unix/macOS or {@code python} on Windows)</li>
+     *   <li>Explicitly provided configuration path parameter (if non-blank).</li>
+     *   <li>System property override ({@code -Dbot.pythonpath=...}).</li>
+     *   <li>Local virtual environment binary relative to working directory ({@code .venv/bin/python} or {@code .venv\Scripts\python.exe}).</li>
+     *   <li>OS system executable fallback ({@code "python3"} on Unix/macOS or {@code "python"} on Windows).</li>
      * </ol>
+     * </p>
      *
-     * @param configPythonPath Custom Python path from config file (can be null or blank)
-     * @return The absolute or command path to the Python executable
+     * @param configPythonPath a custom Python executable path from configuration, or {@code null}/blank to use fallbacks
+     * @return the resolved absolute file path or system command string for executing Python
      */
     public static String getPythonExecutablePath(String configPythonPath) 
     {
@@ -154,7 +178,9 @@ public class PythonScriptManager
     }
     
     /**
-     * Overload for calls without explicit configuration parameters.
+     * Overload for {@link #getPythonExecutablePath(String)} without an explicit configuration path.
+     *
+     * @return the resolved absolute file path or system command string for executing Python
      */
     public static String getPythonExecutablePath() 
     {
