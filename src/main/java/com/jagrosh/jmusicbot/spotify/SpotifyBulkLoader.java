@@ -24,7 +24,22 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.interactions.InteractionHook;
 
 /**
- * Bulk loader component for asynchronously resolving and enqueuing track batches retrieved via Spotify Bridge.
+ * Bulk loader component responsible for asynchronously resolving and enqueuing batches of Spotify tracks.
+ * <p>
+ * This class coordinates the lookup of Spotify metadata against YouTube search queries using LavaPlayer.
+ * It ensures track order preservation while leveraging multi-threaded parallel resolution for bulk playlists
+ * and albums.
+ * </p>
+ *
+ * <h2>Key Architecture & Concurrency Rules:</h2>
+ * <ul>
+ *   <li><b>Cancellation Token Tracking:</b> Tracks active load operations per guild via {@link #ACTIVE_LOAD_TOKENS}.
+ *       Interrupted loads (e.g., via {@code /stop} or new play commands) are cleanly aborted using {@link #cancelLoading(long)}.</li>
+ *   <li><b>Sequential First-Track Execution:</b> Loads and enqueues the first track immediately to provide instant
+ *       audio playback and Discord UI feedback before firing background resolution tasks for remaining items.</li>
+ *   <li><b>Position-Preserved Array Mapping:</b> Resolves remaining tracks concurrently using a fixed thread pool
+ *       while inserting audio tracks into an index-aligned array to guarantee original playlist ordering upon enqueuing.</li>
+ * </ul>
  */
 public class SpotifyBulkLoader
 {
@@ -35,9 +50,12 @@ public class SpotifyBulkLoader
 
     /**
      * Cancels any active Spotify background loading task for the specified guild.
-     * Call this from commands like /stop, /clear, or when starting a new playback command.
+     * <p>
+     * Should be invoked by command handlers (such as {@code /stop}, {@code /skip}, or {@code /clear})
+     * to immediately interrupt ongoing background YouTube searches and queue operations.
+     * </p>
      *
-     * @param guildId the ID of the guild whose loading tasks should be cancelled
+     * @param guildId the Discord snowflake ID of the target guild
      */
     public static void cancelLoading(long guildId)
     {
@@ -45,6 +63,13 @@ public class SpotifyBulkLoader
         LOG.debug("Cancelled active Spotify bulk load for guild {}", guildId);
     }
 
+    /**
+     * Checks whether an ongoing load operation token has been invalidated or cancelled.
+     *
+     * @param guildId the Discord snowflake ID of the guild
+     * @param token   the unique execution token assigned at startup
+     * @return {@code true} if the token is no longer active or has been overridden; {@code false} otherwise
+     */
     private static boolean isCancelled(long guildId, long token)
     {
         Long activeToken = ACTIVE_LOAD_TOKENS.get(guildId);
@@ -52,7 +77,26 @@ public class SpotifyBulkLoader
     }
 
     /**
-     * Resolves Spotify metadata queries against YouTube and adds the resulting tracks sequentially to the guild's queue.
+     * Resolves a batch of Spotify track metadata entries against YouTube search endpoints and enqueues
+     * the resulting tracks sequentially into the guild's playback queue.
+     * <p>
+     * <b>Workflow:</b>
+     * <ol>
+     *   <li>Generates a unique execution token and registers it for the target guild.</li>
+     *   <li>Searches YouTube for the primary track, selecting the best match via {@link SpotifyTrackMatcher}.</li>
+     *   <li>Enqueues the first track and updates the Discord {@link InteractionHook}.</li>
+     *   <li>Spawns a bounded thread pool to resolve all remaining tracks concurrently without blocking Discord gateway threads.</li>
+     *   <li>Enqueues the resolved tracks in original array index order once background searches complete.</li>
+     * </ol>
+     * </p>
+     *
+     * @param bot          the core bot instance providing configuration and player managers
+     * @param guild        the target Discord guild
+     * @param member       the guild member who initiated the command
+     * @param channel      the text channel where feedback should be posted
+     * @param result       the parsed {@link SpotifyResult} holding track records
+     * @param musicService the music management service handling queueing logic
+     * @param hook         the Discord slash interaction hook for deferred message edits
      */
     public static void loadPlaylist(Bot bot, Guild guild, Member member, TextChannel channel,
             SpotifyResult result, MusicService musicService, InteractionHook hook)
