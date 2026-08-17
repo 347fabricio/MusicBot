@@ -118,7 +118,7 @@ public class SpotifyBulkLoader
         SpotifyTrack firstTrack = result.tracks().get(0);
         String firstTitle = firstTrack.title() != null ? firstTrack.title() : "";
         String firstArtist = firstTrack.artist() != null ? firstTrack.artist() : "";
-        Integer firstDurationMs = firstTrack.durationMs() > 0 ? (int) firstTrack.durationMs() : null;
+        Long firstDurationMs = firstTrack.durationMs() > 0 ? (long) firstTrack.durationMs() : null;
         String firstQuery = (firstTitle + " " + firstArtist).trim();
 
         bot.getPlayerManager().loadItemOrdered(guild, "ytsearch:" + firstQuery,
@@ -281,7 +281,7 @@ public class SpotifyBulkLoader
                             final SpotifyTrack st = result.tracks().get(i);
                             final String sTitle = st.title() != null ? st.title() : "";
                             final String sArtist = st.artist() != null ? st.artist() : "";
-                            final Integer sDurationMs = st.durationMs() > 0 ? (int) st.durationMs() : null;
+                            final Long sDurationMs = st.durationMs() > 0 ? (long) st.durationMs() : null;
                             final String trackQuery = (sTitle + " " + sArtist).trim();
 
                             executor.submit(() -> {

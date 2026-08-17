@@ -39,7 +39,7 @@ public class SpotifyTrackMatcher
      * @return the best matching {@link AudioTrack}, or {@code null} if results are empty, title is invalid, or no track meets duration bounds
      */
 	public static AudioTrack selectBestMatch(List<AudioTrack> youtubeResults, String spotifyTitle, String spotifyArtist,
-			Integer spotifyDurationMs)
+			Long spotifyDurationMs)
 	{
 		if (youtubeResults == null || youtubeResults.isEmpty())
 		{
@@ -48,7 +48,7 @@ public class SpotifyTrackMatcher
 
 		String spArtist = isolateArtistName(spotifyArtist);
 		String spTitle = (spotifyTitle != null) ? spotifyTitle.toLowerCase().trim() : "";
-		Integer spDurationMs = spotifyDurationMs;
+		Long spDurationMs = spotifyDurationMs;
 		
 		if (spTitle.isEmpty())
 		{
@@ -117,7 +117,7 @@ public class SpotifyTrackMatcher
      * @param spotifyDurationMs expected duration of the Spotify track in milliseconds
      * @return {@code true} if the candidate falls within allowable bounds or if target duration is unmapped/zero; {@code false} otherwise
      */
-	private static boolean isDurationValid(long trackDurationMs, Integer spotifyDurationMs)
+	private static boolean isDurationValid(long trackDurationMs, Long spotifyDurationMs)
 	{
 	    if (spotifyDurationMs == null || spotifyDurationMs <= 0)
 	    {
