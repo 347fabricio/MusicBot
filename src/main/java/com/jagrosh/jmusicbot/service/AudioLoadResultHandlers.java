@@ -20,7 +20,6 @@ import com.jagrosh.jmusicbot.audio.AudioHandler;
 import com.jagrosh.jmusicbot.audio.QueuedTrack;
 import com.jagrosh.jmusicbot.audio.RequestMetadata;
 import com.jagrosh.jmusicbot.utils.FormatUtil;
-import com.jagrosh.jmusicbot.utils.TimeUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity;
@@ -40,7 +39,6 @@ import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -320,7 +318,7 @@ public final class AudioLoadResultHandlers
 				buttons.add(Button.secondary(ID_SEARCH_TRACK_PREFIX + i, String.valueOf(i + 1)));
 			}
 
-			EmbedBuilder selectionEmbed = EmbedFactory.createMultiTrackEmbed(tracks);
+			EmbedBuilder selectionEmbed = FormatUtil.createMultiTrackEmbed(tracks);
 			buttons.add(Button.danger(ID_SEARCH_CANCEL, Emoji.fromUnicode(CANCEL)).withLabel("Cancel"));
 
 			MessageEditBuilder editBuilder = new MessageEditBuilder().setEmbeds(selectionEmbed.build())
@@ -388,68 +386,6 @@ public final class AudioLoadResultHandlers
 				});
 			});
 		}
-
-		/**
-		 * Utility factory for constructing standardized Discord embed messages.
-		 */
-		public class EmbedFactory
-		{
-			/**
-		     * Builds an embed message containing a numbered list of audio tracks for user selection.
-		     */
-			public static EmbedBuilder createMultiTrackEmbed(List<AudioTrack> tracks)
-			{
-				EmbedBuilder builder = new EmbedBuilder().setColor(Color.decode("#070707"))
-						.setTitle("🎵 Track Selection");
-
-				if (!tracks.isEmpty() && tracks.get(0).getInfo().artworkUrl != null)
-				{
-					builder.setThumbnail(tracks.get(0).getInfo().artworkUrl);
-				}
-
-				for (int i = 0; i < tracks.size(); i++)
-				{
-					AudioTrack track = tracks.get(i);
-
-					String safeTitle = TrackUtil.getFormattedTitle(track.getInfo().title);
-
-					String fieldName = "`" + (i + 1) + ".` " + track.getInfo().author;
-					String fieldValue = "[" + safeTitle + "](" + track.getInfo().uri + ") `("
-							+ TimeUtil.formatTime(track.getDuration()) + ")`";
-
-					builder.addField(fieldName, fieldValue, false);
-				}
-
-				return builder;
-			}
-		}
-		
-		/**
-		 * Utility class for formatting and processing audio track metadata.
-		 */
-		public class TrackUtil
-		{
-			/**
-		     * Sanitizes and truncates a track title for clean display in Discord embeds.
-		     */
-			public static String getFormattedTitle(String title)
-			{
-				if (title == null)
-				{
-					return "Unknown Title";
-				}
-
-				String trimmedTitle = title.trim().replaceAll("[\\[\\]]", "");
-				int maxLength = 50; // title + " " + (1:00:00)
-				if (trimmedTitle.length() > maxLength)
-				{
-					return trimmedTitle.substring(0, maxLength) + "...";
-				}
-
-				return trimmedTitle;
-			}
-		}
-
 
         private void handlePlaylistLoadResult(AudioPlaylist playlist, int count)
         {
