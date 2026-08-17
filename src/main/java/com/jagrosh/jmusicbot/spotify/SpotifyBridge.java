@@ -81,7 +81,6 @@ public class SpotifyBridge
             else
             {
                 enabled = false;
-//                LOG.warn("SpotifyBridge pre-flight verification failed. Spotify features will be disabled.");
                 String reason = (testResult != null) ? testResult.errorMessage() : "Null result from script";
                 LOG.warn("SpotifyBridge pre-flight verification failed: {}. Spotify features will be disabled.", reason);
             }

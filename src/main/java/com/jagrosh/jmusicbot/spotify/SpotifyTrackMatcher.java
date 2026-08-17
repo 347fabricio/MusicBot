@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Utility matcher designed to resolve the optimal {@link AudioTrack} from YouTube search
@@ -29,14 +28,6 @@ public class SpotifyTrackMatcher
 {
 	private static final Logger LOG = LoggerFactory.getLogger(SpotifyTrackMatcher.class);
 
-	private static final AtomicLong totalRequests = new AtomicLong(0);
-	private static final AtomicLong perfectMatches = new AtomicLong(0);
-	private static final AtomicLong officialRemasteredMatches = new AtomicLong(0);
-	private static final AtomicLong fallbackMatches = new AtomicLong(0);
-	private static final AtomicLong emergencyMatches = new AtomicLong(0);
-	private static final AtomicLong durationRejections = new AtomicLong(0);
-	private static final AtomicLong failedMatches = new AtomicLong(0);
-
 	/**
      * Evaluates a list of candidate YouTube search results and selects the best matching
      * {@link AudioTrack} corresponding to the provided Spotify track metadata.
@@ -50,11 +41,8 @@ public class SpotifyTrackMatcher
 	public static AudioTrack selectBestMatch(List<AudioTrack> youtubeResults, String spotifyTitle, String spotifyArtist,
 			Integer spotifyDurationMs)
 	{
-		totalRequests.incrementAndGet();
-
 		if (youtubeResults == null || youtubeResults.isEmpty())
 		{
-			failedMatches.incrementAndGet();
 			return null;
 		}
 
@@ -65,7 +53,6 @@ public class SpotifyTrackMatcher
 		if (spTitle.isEmpty())
 		{
 			LOG.warn("Spotify track title is empty.");
-			failedMatches.incrementAndGet();
 			return null;
 		}
 
@@ -75,7 +62,6 @@ public class SpotifyTrackMatcher
 		{
 			if (!isDurationValid(track.getDuration(), spDurationMs))
 	        {
-	            durationRejections.incrementAndGet();
 	            continue;
 	        }
 			
@@ -91,15 +77,12 @@ public class SpotifyTrackMatcher
 
 			if (isOfficialChannel && containsTitle)
 	        {
-	            perfectMatches.incrementAndGet();
 	            return track;
 	        } 
             else if (containsArtist && containsTitle)
 			{
-				if (ytFullText.contains("official") || ytFullText.contains("audio") || ytFullText.contains("áudio")
-						|| ytFullText.contains("remaster") || ytFullText.contains("remastered"))
+				if (ytFullText.contains("official") || ytFullText.contains("audio") || ytFullText.contains("remaster"))
 				{
-					officialRemasteredMatches.incrementAndGet();
 					return track;
 				}
 
@@ -112,7 +95,6 @@ public class SpotifyTrackMatcher
 
 		if (fallbackMatch != null)
 		{
-			fallbackMatches.incrementAndGet();
 			return fallbackMatch;
 		}
 
@@ -120,12 +102,10 @@ public class SpotifyTrackMatcher
 	    {
 	        if (isDurationValid(track.getDuration(), spDurationMs))
 	        {
-	            emergencyMatches.incrementAndGet();
-	            return track;
+	        	return track;
 	        }
 	    }
 
-	    failedMatches.incrementAndGet();
 	    return null;
 	}
 	
@@ -167,60 +147,5 @@ public class SpotifyTrackMatcher
 		}
 		String rawArtist = ytAuthor.split(" - |/")[0];
 		return rawArtist.toLowerCase();
-	}
-
-	/**
-     * Formats and logs current heuristic match percentages and execution metrics to the application logger.
-     * <p>
-     * Computes success rates across perfect, official/remastered, fallback, and emergency match categories.
-     * </p>
-     */
-	public static void logMatchingStatistics()
-	{
-		long total = totalRequests.get();
-		if (total == 0)
-		{
-			LOG.info("No tracks processed yet.");
-			return;
-		}
-
-		long perfect = perfectMatches.get();
-		long official = officialRemasteredMatches.get();
-		long fallback = fallbackMatches.get();
-		long emergency = emergencyMatches.get();
-		long rejected = durationRejections.get();
-		long failed = failedMatches.get();
-
-		long totalSuccessful = perfect + official + fallback + emergency;
-		double successRate = (double) totalSuccessful / total * 100.0;
-		double perfectRate = (double) perfect / total * 100.0;
-		double officialRate = (double) official / total * 100.0;
-		double fallbackRate = (double) fallback / total * 100.0;
-		double emergencyRate = (double) emergency / total * 100.0;
-
-		LOG.info(
-				"\n--- Spotify Matcher Statistics ---\n" + "Total Queries:         {}\n"
-						+ "Overall Success Rate:  {} ({})\n" + "  - Perfect Matches:   {} ({})\n"
-						+ "  - Official/Remaster: {} ({})\n" + "  - Fallback Matches:  {} ({})\n"
-						+ "  - Emergency Matches: {} ({})\n" + "Duration Rejections:   {}\n"
-						+ "Failed Searches:       {}\n" + "---------------------------------",
-				total, totalSuccessful, String.format("%.2f%%", successRate), perfect,
-				String.format("%.2f%%", perfectRate), official, String.format("%.2f%%", officialRate), fallback,
-				String.format("%.2f%%", fallbackRate), emergency, String.format("%.2f%%", emergencyRate), rejected,
-				failed);
-	}
-
-	/**
-     * Resets all internal atomic counters tracking heuristic match metrics back to zero.
-     */
-	public static void resetStatistics()
-	{
-		totalRequests.set(0);
-		perfectMatches.set(0);
-		officialRemasteredMatches.set(0);
-		fallbackMatches.set(0);
-		emergencyMatches.set(0);
-		durationRejections.set(0);
-		failedMatches.set(0);
 	}
 }
