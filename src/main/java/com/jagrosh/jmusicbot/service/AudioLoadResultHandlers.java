@@ -298,10 +298,18 @@ public final class AudioLoadResultHandlers
 			}
 		}
 
-		/**
-	     * Displays an interactive track selection menu using JDA buttons, allowing the user 
-	     * to choose a specific search result or cancel the selection before queuing.
-	     */
+        /**
+         * Renders an interactive track selection menu allowing the member to choose a track from search results.
+         * <p>
+         * Constructs an embed listing the top matching tracks along with numbered selection buttons and a 
+         * cancel option. Listens for user interaction via {@link com.jagrosh.jdautilities.commons.waiter.EventWaiter}
+         * for up to 30 seconds. Upon selection, enqueues the chosen track using {@link MusicService} and updates
+         * the Discord message with the queueing result while clearing interactive components.
+         * </p>
+         *
+         * @param topTracks the list of candidate {@link AudioTrack} objects presented to the user
+         * @param playlist  the parent {@link AudioPlaylist} context associated with the search, if available
+         */
 		private void displayTrackSelection(List<AudioTrack> topTracks, AudioPlaylist playlist)
 		{
 			List<AudioTrack> tracks = new ArrayList<>(topTracks);
