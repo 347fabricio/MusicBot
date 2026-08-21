@@ -4,6 +4,7 @@
 /test/
 *.json
 *.txt
+!requirements.txt
 nb*.xml
 
 # IDEs
@@ -28,9 +29,3 @@ Thumbs.db
 
 # Python Virtual Environment & Caches 
 .venv/
-
-# Ignore local testing script in root (packaged version is under resources)
-/scraper.py
-
-# Build & Runtime Outputs
-.slashcommands.hash
