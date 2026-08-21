@@ -108,6 +108,13 @@ def get_batch_data():
                             "duration_ms": [getattr(t, 'duration_ms', 0) for t in valid_tracks]
                         })
 
+                except NotFoundError:
+                    response_items.append({
+                        "id": item_id,
+                        "success": False,
+                        "error": "Playlist is private or does not exist."
+                    })
+
                 except Exception as item_err:
                     response_items.append({
                         "id": item_id,

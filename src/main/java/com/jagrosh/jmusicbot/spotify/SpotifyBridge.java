@@ -235,11 +235,14 @@ public class SpotifyBridge
             }
 
             String rawOutput = stdoutFuture.get(2, TimeUnit.SECONDS).trim();
+            String errorOutput = stderrFuture.get(2, TimeUnit.SECONDS).trim();
             int exitCode = p.exitValue();
 
             if (exitCode != 0)
             {
-                return SpotifyResult.failure("Python process exited with error code " + exitCode);
+                String message = !rawOutput.isEmpty() ? rawOutput : errorOutput;
+                LOG.error("Python scraper failed with exit code {}: {}", exitCode, message);
+                return SpotifyResult.failure(!message.isEmpty() ? message : "Python process exited with error code " + exitCode);
             }
 
             if (!rawOutput.isEmpty())

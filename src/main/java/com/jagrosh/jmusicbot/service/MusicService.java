@@ -311,21 +311,27 @@ public class MusicService
 
 		if (spotifyData != null)
 		{
+			LOG.debug("Successfully parsed SpotifyData -> Type: {}, ID: {}", spotifyData.type(), spotifyData.id());
+			
 			SpotifyBridge.getTrackInfoAsync(spotifyData.type(), spotifyData.id()).thenAcceptAsync(result -> {
 				if (result != null && result.success() && result.tracks() != null && !result.tracks().isEmpty())
 				{
+					LOG.debug("SpotifyBridge resolution successful. Total tracks returned: {}", result.tracks().size());
+					
 					SpotifyTrack firstTrack = result.tracks().get(0);
 					String title = firstTrack.title() != null ? firstTrack.title() : "";
 					String artist = firstTrack.artist() != null ? firstTrack.artist() : "";
 					String query = (title + " " + artist).trim();
 					String ytQuery = "ytsearch:" + query;
-
+					
 					if (result.tracks().size() > 1)
 					{
+						LOG.debug("Detected bulk container (playlist/album). Triggering SpotifyPlaylistPromptHandler...");
 						bot.getPlayerManager().loadItemOrdered(guild, ytQuery, bot.getAudioLoadWrapper().wrap(ytQuery,
 								new SpotifyPlaylistPromptHandler(bot, guild, member, channel, output, result, this)));
 					} else
 					{
+						LOG.debug("Detected single track/episode. Loading directly into queue...");
 						bot.getPlayerManager().loadItemOrdered(guild, ytQuery,
 								bot.getAudioLoadWrapper().wrap(ytQuery, new AudioLoadResultHandlers.PlayResultHandler(
 										this, bot, output, guild, member, ytQuery, true, channel) {
@@ -333,6 +339,15 @@ public class MusicService
 					}
 				} else
 				{
+					String errorEmoji = bot.getConfig().getError();
+					String errorReason = (result != null && result.errorMessage() != null && !result.errorMessage().isBlank())
+		                    ? result.errorMessage()
+		                    : "The playlist is private, empty, or does not exist.";
+					output.editMessage(errorEmoji + " Failed to load Spotify playlist: " + errorReason);
+
+		            LOG.warn("Spotify metadata resolution failed for [{}:{}] -> Reason: {}", 
+		                    spotifyData.type(), spotifyData.id(), errorReason);
+					
 					if (!SpotifyBridge.isEnabled())
 					{
 						output.replyError(
